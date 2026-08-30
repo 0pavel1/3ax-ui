@@ -58,6 +58,16 @@ func HasPendingApplication(tgId int64) bool {
 	return count > 0
 }
 
+// GetAllPendingRegistrations returns all registrations currently in pending status.
+func GetAllPendingRegistrations() ([]model.PendingRegistration, error) {
+	db := database.GetDB()
+	var regs []model.PendingRegistration
+	if err := db.Where("status = ?", model.RegPending).Order("created_at asc").Find(&regs).Error; err != nil {
+		return nil, err
+	}
+	return regs, nil
+}
+
 // UpdateRegistrationStatus updates status for a registration.
 func UpdateRegistrationStatus(tgId int64, status model.RegistrationStatus) error {
 	db := database.GetDB()

@@ -1073,6 +1073,8 @@
 "instruction" = "📖 Instructions"
 "approveReg" = "✅ Approve"
 "rejectReg" = "❌ Reject"
+"pendingRegistrations" = "📋 Applications"
+"noPendingRegistrations" = "📋 No pending applications"
 
 [tgbot.answers]
 "successfulOperation" = "✅ Operation successful!"

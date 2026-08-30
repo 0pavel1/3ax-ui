@@ -839,13 +839,14 @@ func (t *Tgbot) randomShadowSocksPassword() string {
 func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool) {
 	chatId := callbackQuery.Message.GetChat().ID
 
+	// get query from hash storage
+	decodedQuery, err := t.decodeQuery(callbackQuery.Data)
+	if err != nil {
+		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.noQuery"))
+		return
+	}
+
 	if isAdmin {
-		// get query from hash storage
-		decodedQuery, err := t.decodeQuery(callbackQuery.Data)
-		if err != nil {
-			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.noQuery"))
-			return
-		}
 		dataArray := strings.Split(decodedQuery, " ")
 
 		if len(dataArray) >= 2 && len(dataArray[1]) > 0 {
@@ -1714,7 +1715,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 			}
 			return
 		} else {
-			switch callbackQuery.Data {
+			switch decodedQuery {
 			case "get_inbounds":
 				inbounds, err := t.getInbounds()
 				if err != nil {
@@ -1724,6 +1725,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 				}
 				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.buttons.allClients"))
 				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseInbound"), inbounds)
+				return
 			case "admin_client_sub_links":
 				inbounds, err := t.getInboundsFor("get_clients_for_sub")
 				if err != nil {
@@ -1731,6 +1733,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 					return
 				}
 				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseInbound"), inbounds)
+				return
 			case "admin_client_individual_links":
 				inbounds, err := t.getInboundsFor("get_clients_for_individual")
 				if err != nil {
@@ -1738,6 +1741,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 					return
 				}
 				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseInbound"), inbounds)
+				return
 			case "admin_client_qr_links":
 				inbounds, err := t.getInboundsFor("get_clients_for_qr")
 				if err != nil {
@@ -1745,12 +1749,21 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 					return
 				}
 				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseInbound"), inbounds)
+				return
+			case "admin_pending_regs":
+				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.buttons.pendingRegistrations"))
+				t.showPendingRegistrations(chatId)
+				return
+			case "admin_instruction":
+				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.buttons.instruction"))
+				t.sendInstruction(chatId)
+				return
 			}
 
 		}
 	}
 
-	switch callbackQuery.Data {
+	switch decodedQuery {
 	case "get_usage":
 		t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.buttons.serverUsage"))
 		t.getServerUsage(chatId)
@@ -2137,17 +2150,17 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 
 		}
 	default:
-		if after, ok := strings.CutPrefix(callbackQuery.Data, "client_sub_links "); ok {
+		if after, ok := strings.CutPrefix(decodedQuery, "client_sub_links "); ok {
 			email := after
 			t.sendClientSubLinks(chatId, email)
 			return
 		}
-		if after, ok := strings.CutPrefix(callbackQuery.Data, "client_individual_links "); ok {
+		if after, ok := strings.CutPrefix(decodedQuery, "client_individual_links "); ok {
 			email := after
 			t.sendClientIndividualLinks(chatId, email)
 			return
 		}
-		if after, ok := strings.CutPrefix(callbackQuery.Data, "client_qr_links "); ok {
+		if after, ok := strings.CutPrefix(decodedQuery, "client_qr_links "); ok {
 			email := after
 			t.sendClientQRLinks(chatId, email)
 			return
@@ -2323,6 +2336,36 @@ func (t *Tgbot) SubmitAddClient() (bool, error) {
 	return t.inboundService.AddInboundClient(newInbound)
 }
 
+// showPendingRegistrations lists all pending registration requests for the admin.
+func (t *Tgbot) showPendingRegistrations(chatId int64) {
+	regs, err := GetAllPendingRegistrations()
+	if err != nil || len(regs) == 0 {
+		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.buttons.noPendingRegistrations"))
+		return
+	}
+
+	for _, reg := range regs {
+		username := reg.Username
+		if username == "" {
+			username = "-"
+		}
+		adminMsg := t.I18nBot("tgbot.registration.adminNotice",
+			"FirstName=="+reg.FirstName,
+			"LastName=="+reg.LastName,
+			"Slug=="+reg.Slug,
+			"TgID=="+strconv.FormatInt(reg.TgID, 10),
+			"Username=="+username,
+		)
+		adminKB := tu.InlineKeyboard(
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.approveReg")).WithCallbackData(t.encodeQuery(fmt.Sprintf("approve_reg %d", reg.TgID))),
+				tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.rejectReg")).WithCallbackData(t.encodeQuery(fmt.Sprintf("reject_reg %d", reg.TgID))),
+			),
+		)
+		t.SendMsgToTgbot(chatId, adminMsg, adminKB)
+	}
+}
+
 // checkAdmin checks if the given Telegram ID is an admin.
 func checkAdmin(tgId int64) bool {
 	for _, adminId := range adminIds {
@@ -2364,7 +2407,10 @@ func (t *Tgbot) SendAnswer(chatId int64, msg string, isAdmin bool) {
 			tu.InlineKeyboardButton(t.I18nBot("subscription.individualLinks")).WithCallbackData(t.encodeQuery("admin_client_individual_links")),
 			tu.InlineKeyboardButton(t.I18nBot("qrCode")).WithCallbackData(t.encodeQuery("admin_client_qr_links")),
 		),
-		// TODOOOOOOOOOOOOOO: Add restart button here.
+		tu.InlineKeyboardRow(
+			tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.pendingRegistrations")).WithCallbackData(t.encodeQuery("admin_pending_regs")),
+			tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.instruction")).WithCallbackData(t.encodeQuery("admin_instruction")),
+		),
 	)
 	numericKeyboardClient := tu.InlineKeyboard(
 		tu.InlineKeyboardRow(
