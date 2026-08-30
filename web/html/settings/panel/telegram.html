@@ -34,6 +34,13 @@
                 </a-select>
             </template>
         </a-setting-list-item>
+        <a-setting-list-item paddings="small">
+            <template #title>{{ i18n "pages.settings.telegramBotExcludeInbounds"}}</template>
+            <template #description>{{ i18n "pages.settings.telegramBotExcludeInboundsDesc"}}</template>
+            <template #control>
+                <a-input type="text" placeholder="5" v-model="allSetting.tgBotExcludeInbounds"></a-input>
+            </template>
+        </a-setting-list-item>
     </a-collapse-panel>
     <a-collapse-panel key="2" header='{{ i18n "pages.settings.notifications" }}'>
         <a-setting-list-item paddings="small">

@@ -50,6 +50,7 @@ var defaultValueMap = map[string]string{
 	"tgBotLoginNotify":            "true",
 	"tgCpu":                       "80",
 	"tgLang":                      "en-US",
+	"tgBotExcludeInbounds":        "5",
 	"twoFactorEnable":             "false",
 	"twoFactorToken":              "",
 	"subEnable":                   "true",
@@ -363,6 +364,30 @@ func (s *SettingService) GetTgCpu() (int, error) {
 
 func (s *SettingService) GetTgLang() (string, error) {
 	return s.getString("tgLang")
+}
+
+func (s *SettingService) GetTgBotExcludeInbounds() (string, error) {
+	return s.getString("tgBotExcludeInbounds")
+}
+
+func (s *SettingService) SetTgBotExcludeInbounds(inbounds string) error {
+	return s.setString("tgBotExcludeInbounds", inbounds)
+}
+
+func (s *SettingService) GetTgBotExcludeInboundIds() ([]int, error) {
+	str, err := s.GetTgBotExcludeInbounds()
+	if err != nil || strings.TrimSpace(str) == "" {
+		return []int{5}, nil
+	}
+	parts := strings.Split(str, ",")
+	var ids []int
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if id, err := strconv.Atoi(p); err == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids, nil
 }
 
 func (s *SettingService) GetTwoFactorEnable() (bool, error) {

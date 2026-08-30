@@ -565,6 +565,8 @@
 "information" = "Information"
 "language" = "Language"
 "telegramBotLanguage" = "Telegram Bot Language"
+"telegramBotExcludeInbounds" = "Excluded Inbound IDs for Bot"
+"telegramBotExcludeInboundsDesc" = "Comma-separated inbound IDs (e.g. 5) that will be excluded when registering new bot users"
 
 [pages.xray]
 "title" = "Xray Configs"
