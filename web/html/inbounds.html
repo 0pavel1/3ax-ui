@@ -3009,6 +3009,8 @@
                     case Protocols.HTTP:
                         // Mixed/HTTP basic-auth username is stored as email.
                         return client.email;
+                    case Protocols.HYSTERIA:
+                        return client.auth;
                     default:
                         return client.id;
                 }
