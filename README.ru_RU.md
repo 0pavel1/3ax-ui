@@ -7,10 +7,10 @@
   </picture>
 </p>
 
-[![Release](https://img.shields.io/github/v/release/coinman-dev/3ax-ui.svg)](https://github.com/coinman-dev/3ax-ui/releases)
-[![Build](https://img.shields.io/github/actions/workflow/status/coinman-dev/3ax-ui/release.yml.svg)](https://github.com/coinman-dev/3ax-ui/actions)
-[![GO Version](https://img.shields.io/github/go-mod/go-version/coinman-dev/3ax-ui.svg)](#)
-[![Downloads](https://img.shields.io/github/downloads/coinman-dev/3ax-ui/total.svg)](https://github.com/coinman-dev/3ax-ui/releases/latest)
+[![Release](https://img.shields.io/github/v/release/0pavel1/3ax-ui.svg)](https://github.com/0pavel1/3ax-ui/releases)
+[![Build](https://img.shields.io/github/actions/workflow/status/0pavel1/3ax-ui/release.yml.svg)](https://github.com/0pavel1/3ax-ui/actions)
+[![GO Version](https://img.shields.io/github/go-mod/go-version/0pavel1/3ax-ui.svg)](#)
+[![Downloads](https://img.shields.io/github/downloads/0pavel1/3ax-ui/total.svg)](https://github.com/0pavel1/3ax-ui/releases/latest)
 [![License](https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
 **3AX-UI** — форк панели управления [3x-ui](https://github.com/MHSanaei/3x-ui), расширенный встроенными протоколами обхода блокировок, которых нет в оригинале: **AmneziaWG** (по 3.1 включительно), **native WireGuard** с нативным IPv6 и **MTProto** (прокси Telegram).
@@ -23,13 +23,13 @@
 ## Быстрый старт
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/0pavel1/3ax-ui/main/install.sh)
 ```
 
 Для установки последней pre-release версии:
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) --beta
+bash <(curl -Ls https://raw.githubusercontent.com/0pavel1/3ax-ui/main/install.sh) --beta
 ```
 ---
 
@@ -191,7 +191,7 @@ xray-core inbound'ы `mixed` (SOCKS5) и `http` теперь использую�
 Скрипты `install.sh` и `update.sh` определяют, что их запускают из клонированного репозитория (наличие файлов + проверка `BASH_SOURCE`) и **собирают бинарь панели на месте из локальных исходников** вместо скачивания готового релиза с GitHub.
 
 ```bash
-git clone https://github.com/coinman-dev/3ax-ui.git
+git clone https://github.com/0pavel1/3ax-ui.git
 cd 3ax-ui
 sudo bash install.sh
 ```
@@ -217,7 +217,13 @@ Install panel in debug / diagnostic mode (localhost only)? [y/N]
 
 ### 11. Дополнительно
 
-- **Telegram-бот:** отправка ссылок и QR клиенту прямо в чат при его создании; рассылка AWG-конфигов привязанным клиентам (для перехода на 2.0).
+- **Регистрация и авто-создание клиентов через Telegram-бота:**
+  - Самостоятельная подача заявки новыми пользователями через команду `/start` со строгой валидацией имени и фамилии на русском языке.
+  - Уведомление администратора в Telegram с кнопками быстрого подтверждения `[✅ Создать]` и отклонения `[❌ Отклонить]`.
+  - Автоматическое создание клиента во всех активных входящих подключениях (`имя_фамилия_{id}`) и в AmneziaWG (`имя_фамилия_awg_1`) с общим ID подписки и безлимитным трафиком.
+  - Прямая выдача файлов конфигурации `.conf` и QR-кодов для AmneziaWG прямо в боте.
+  - Учет трафика и онлайн-статуса по всем подключениям (включая AWG).
+  - Встроенное интерактивное меню с инструкциями (`📖 Инструкция`) по подключению через клиенты с поддержкой подписки (Happ, v2rayTun, Streisand, v2rayNG) и через AmneziaVPN.
 - **Настраиваемый размер QR-кодов:** 300 / 450 (по умолчанию) / 600 px.
 - **Безопасный URL подписки по умолчанию:** при установке путь подписки генерируется со случайным 12-символьным суффиксом (например `/sub-Xk92mPqLvzRt/`) вместо `/sub/`.
 
@@ -238,23 +244,23 @@ Install panel in debug / diagnostic mode (localhost only)? [y/N]
 
 ```bash
 # Стабильная версия
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/0pavel1/3ax-ui/main/install.sh)
 
 # Последняя pre-release версия
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) --beta
+bash <(curl -Ls https://raw.githubusercontent.com/0pavel1/3ax-ui/main/install.sh) --beta
 
 # Конкретная версия
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/install.sh) v1.2.1
+bash <(curl -Ls https://raw.githubusercontent.com/0pavel1/3ax-ui/main/install.sh) v1.7.0.1
 ```
 
 ## Обновление панели
 
 ```bash
 # Стабильная версия
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/update.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/0pavel1/3ax-ui/main/update.sh)
 
 # Последняя pre-release версия
-bash <(curl -Ls https://raw.githubusercontent.com/coinman-dev/3ax-ui/main/update.sh) --beta
+bash <(curl -Ls https://raw.githubusercontent.com/0pavel1/3ax-ui/main/update.sh) --beta
 ```
 
 ---
