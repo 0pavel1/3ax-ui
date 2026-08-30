@@ -53,6 +53,7 @@ func initModels() error {
 		&model.TunnelServer{},
 		&model.TunnelClient{},
 		&model.CustomGeoResource{},
+		&model.PendingRegistration{},
 	}
 	for _, model := range models {
 		if err := db.AutoMigrate(model); err != nil {
