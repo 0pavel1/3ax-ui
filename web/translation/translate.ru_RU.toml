@@ -1070,6 +1070,7 @@
 "change_email" = "⚙️📧 Email"
 "change_comment" = "⚙️💬 Комментарий"
 "ResetAllTraffics" = "Сбросить весь трафик"
+"SortedTrafficUsageReport" = "Отсортированный отчет по трафику"
 "instruction" = "📖 Инструкция"
 "approveReg" = "✅ Создать"
 "rejectReg" = "❌ Отклонить"
@@ -1097,6 +1098,7 @@
 "disableSuccess" = "✅ {{ .Email }}: Отключено успешно."
 "askToAddUserId" = "❌ Ваша конфигурация не найдена!\r\n💭 Пожалуйста, попросите администратора использовать ваш Telegram User ID в конфигурации.\r\n\r\n🆔 Ваш User ID: <code>{{ .TgUserID }}</code>"
 "chooseClient" = "Выберите клиента для входящего подключения {{ .Inbound }}"
+"chooseInbound" = "Выберите входящее подключение"
 
 [tgbot.registration]
 "askFirstname" = "👋 Привет! Для подключения к VPN введи своё <b>Имя</b> на русском языке:"
@@ -1113,5 +1115,3 @@
 "notFound" = "❌ Заявка не найдена."
 "alreadyHandled" = "ℹ️ Эта заявка уже была обработана."
 "failed" = "❌ Ошибка при создании клиента: {{ .Error }}"
-
-"chooseInbound" = "Выберите входящее подключение"
