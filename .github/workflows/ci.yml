@@ -3,11 +3,12 @@ name: CI
 on:
     push:
         branches:
-            - main
             - dev
         tags-ignore:
             - "v*"
     pull_request:
+        branches:
+            - dev
 
 permissions:
     contents: read
