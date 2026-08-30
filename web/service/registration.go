@@ -172,31 +172,27 @@ func RegisterUserInbounds(reg *model.PendingRegistration, excludeIds []int, inbo
 }
 
 func buildClientJSONForInbound(inbound *model.Inbound, email string, tgId int64, subId string) (string, error) {
-	tgIdStr := fmt.Sprintf("%d", tgId)
-	cred := strings.ReplaceAll(uuid.NewString(), "-", "")
 	uid := uuid.NewString()
+	cred := strings.ReplaceAll(uuid.NewString(), "-", "")
+
+	client := model.Client{
+		Email:      email,
+		TgID:       tgId,
+		SubID:      subId,
+		Enable:     true,
+		LimitIP:    0,
+		TotalGB:    0,
+		ExpiryTime: 0,
+		Reset:      0,
+	}
 
 	switch inbound.Protocol {
 	case model.VMESS:
-		m := map[string]any{
-			"clients": []map[string]any{{
-				"id":         uid,
-				"security":   "auto",
-				"email":      email,
-				"limitIp":    0,
-				"totalGB":    0,
-				"expiryTime": 0,
-				"enable":     true,
-				"tgId":       tgIdStr,
-				"subId":      subId,
-				"reset":      0,
-			}},
-		}
-		b, _ := json.Marshal(m)
-		return string(b), nil
+		client.ID = uid
+		client.Security = "auto"
 
 	case model.VLESS:
-		flow := ""
+		client.ID = uid
 		if inbound.StreamSettings != "" {
 			var stream map[string]any
 			if json.Unmarshal([]byte(inbound.StreamSettings), &stream) == nil {
@@ -205,103 +201,39 @@ func buildClientJSONForInbound(inbound *model.Inbound, email string, tgId int64,
 				// xtls-rprx-vision is only valid for direct TCP transport (reality / tls).
 				// For xhttp, ws, grpc, httpupgrade etc., flow must be empty.
 				if net == "tcp" && (sec == "reality" || sec == "tls") {
-					flow = "xtls-rprx-vision"
+					client.Flow = "xtls-rprx-vision"
 				}
 			}
 		}
-		m := map[string]any{
-			"clients": []map[string]any{{
-				"id":         uid,
-				"flow":       flow,
-				"email":      email,
-				"limitIp":    0,
-				"totalGB":    0,
-				"expiryTime": 0,
-				"enable":     true,
-				"tgId":       tgIdStr,
-				"subId":      subId,
-				"reset":      0,
-			}},
-		}
-		b, _ := json.Marshal(m)
-		return string(b), nil
 
 	case model.Trojan:
-		m := map[string]any{
-			"clients": []map[string]any{{
-				"password":   cred,
-				"email":      email,
-				"limitIp":    0,
-				"totalGB":    0,
-				"expiryTime": 0,
-				"enable":     true,
-				"tgId":       tgIdStr,
-				"subId":      subId,
-				"reset":      0,
-			}},
-		}
-		b, _ := json.Marshal(m)
-		return string(b), nil
+		client.Password = cred
 
 	case model.Shadowsocks:
-		method := "aes-128-gcm"
+		client.Password = cred
+		client.Security = "aes-128-gcm"
 		if inbound.Settings != "" {
 			var s map[string]any
 			if json.Unmarshal([]byte(inbound.Settings), &s) == nil {
 				if m, ok := s["method"].(string); ok && m != "" {
-					method = m
+					client.Security = m
 				}
 			}
 		}
-		m := map[string]any{
-			"clients": []map[string]any{{
-				"method":     method,
-				"password":   cred,
-				"email":      email,
-				"limitIp":    0,
-				"totalGB":    0,
-				"expiryTime": 0,
-				"enable":     true,
-				"tgId":       tgIdStr,
-				"subId":      subId,
-				"reset":      0,
-			}},
-		}
-		b, _ := json.Marshal(m)
-		return string(b), nil
 
 	case model.Hysteria:
-		m := map[string]any{
-			"clients": []map[string]any{{
-				"auth":       cred,
-				"email":      email,
-				"limitIp":    0,
-				"totalGB":    0,
-				"expiryTime": 0,
-				"enable":     true,
-				"tgId":       tgIdStr,
-				"subId":      subId,
-				"reset":      0,
-			}},
-		}
-		b, _ := json.Marshal(m)
-		return string(b), nil
+		client.Auth = cred
 
 	default:
-		m := map[string]any{
-			"clients": []map[string]any{{
-				"id":         uid,
-				"email":      email,
-				"limitIp":    0,
-				"totalGB":    0,
-				"expiryTime": 0,
-				"enable":     true,
-				"tgId":       tgIdStr,
-				"subId":      subId,
-				"reset":      0,
-			}},
-		}
-		b, _ := json.Marshal(m)
-		return string(b), nil
+		client.ID = uid
 	}
+
+	m := map[string]any{
+		"clients": []model.Client{client},
+	}
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
