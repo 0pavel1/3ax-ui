@@ -126,6 +126,7 @@
       lang: LanguageManager.getLanguage(),
       inboundOptions: [],
       inboundIdOptions: [],
+      tgBotExcludeInboundList: [],
       remarkModels: {
         i: 'Inbound',
         e: 'Email',
@@ -311,9 +312,15 @@
 
           this.oldAllSetting = new AllSetting(msg.obj);
           this.allSetting = new AllSetting(msg.obj);
+          const csv = this.allSetting.tgBotExcludeInbounds || "";
+          this.tgBotExcludeInboundList = csv.length ? csv.split(',').map(s => s.trim()).filter(Boolean) : [];
           app.changeRemarkSample();
           this.saveBtnDisable = true;
         }
+      },
+      onTgBotExcludeInboundsChange(val) {
+        this.tgBotExcludeInboundList = val || [];
+        this.allSetting.tgBotExcludeInbounds = Array.isArray(val) ? val.join(',') : '';
       },
       async loadInboundTags() {
         const msg = await HttpUtil.get("/panel/api/inbounds/list");
@@ -507,15 +514,6 @@
       },
     },
     computed: {
-      tgBotExcludeInboundList: {
-        get: function() {
-          const csv = this.allSetting.tgBotExcludeInbounds || "";
-          return csv.length ? csv.split(',').map(s => s.trim()).filter(Boolean) : [];
-        },
-        set: function(list) {
-          this.allSetting.tgBotExcludeInbounds = Array.isArray(list) ? list.join(',') : '';
-        }
-      },
       ldapInboundTagList: {
         get: function() {
           const csv = this.allSetting.ldapInboundTags || "";

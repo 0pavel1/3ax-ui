@@ -40,10 +40,9 @@
             <template #control>
                 <a-select mode="multiple" :dropdown-class-name="themeSwitcher.currentTheme" :style="{ width: '100%' }"
                     placeholder='{{ i18n "pages.settings.telegramBotExcludeInboundsPlaceholder" }}'
-                    v-model="tgBotExcludeInboundList">
-                    <a-select-option v-for="opt in inboundIdOptions" :key="opt.value" :value="opt.value">
-                        [[ opt.label ]]
-                    </a-select-option>
+                    v-model="tgBotExcludeInboundList"
+                    @change="onTgBotExcludeInboundsChange">
+                    <a-select-option v-for="opt in inboundIdOptions" :key="opt.value" :value="opt.value">[[ opt.label ]]</a-select-option>
                 </a-select>
                 <div v-if="inboundIdOptions.length==0" style="margin-top:6px;color:#999">No inbounds found.</div>
             </template>
