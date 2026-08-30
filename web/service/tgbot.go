@@ -2604,82 +2604,75 @@ func (t *Tgbot) buildSubscriptionURLs(email string) (string, string, error) {
 	return subURL, subJsonURL, nil
 }
 
-// sendClientSubLinks sends the subscription links for the client to the chat.
-func (t *Tgbot) sendClientSubLinks(chatId int64, email string) {
-	if awgClient, err := t.getAwgClientByEmail(email); err == nil && awgClient != nil {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.messages.awgNoSubNotice"))
-		t.sendAwgClientConfig(chatId, awgClient)
-		return
+// fetchSubscriptionLines retrieves raw individual subscription links for a given subId.
+// It prioritizes direct local loopback connection (direct to local sub server) to avoid external DNS/NAT hairpinning issues.
+func (t *Tgbot) fetchSubscriptionLines(subURL string, subId string) ([]string, error) {
+	subPort, _ := t.settingService.GetSubPort()
+	subPath, _ := t.settingService.GetSubPath()
+	subDomain, _ := t.settingService.GetSubDomain()
+	if subDomain == "" {
+		subDomain, _ = t.settingService.GetWebDomain()
+	}
+	if subDomain == "" {
+		subDomain = hostname
 	}
 
-	subURL, subJsonURL, err := t.buildSubscriptionURLs(email)
-	if err != nil {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-		return
+	if !strings.HasPrefix(subPath, "/") {
+		subPath = "/" + subPath
 	}
-	msg := "Subscription URL:\r\n<code>" + subURL + "</code>"
-	if subJsonURL != "" {
-		msg += "\r\n\r\nJSON URL:\r\n<code>" + subJsonURL + "</code>"
-	}
-	inlineKeyboard := tu.InlineKeyboard(
-		tu.InlineKeyboardRow(
-			tu.InlineKeyboardButton(t.I18nBot("subscription.individualLinks")).WithCallbackData(t.encodeQuery("client_individual_links "+email)),
-		),
-		tu.InlineKeyboardRow(
-			tu.InlineKeyboardButton(t.I18nBot("qrCode")).WithCallbackData(t.encodeQuery("client_qr_links "+email)),
-		),
-	)
-	t.SendMsgToTgbot(chatId, msg, inlineKeyboard)
-}
-
-// sendClientIndividualLinks fetches the subscription content (individual links) and sends it to the user
-func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
-	if awgClient, err := t.getAwgClientByEmail(email); err == nil && awgClient != nil {
-		t.sendAwgClientConfig(chatId, awgClient)
-		return
+	if !strings.HasSuffix(subPath, "/") {
+		subPath = subPath + "/"
 	}
 
-	// Build the HTML sub page URL; we'll call it with header Accept to get raw content
-	subURL, _, err := t.buildSubscriptionURLs(email)
-	if err != nil {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-		return
+	var bodyBytes []byte
+
+	// 1. First attempt: Direct local loopback request
+	localURL := fmt.Sprintf("http://127.0.0.1:%d%s%s", subPort, subPath, subId)
+	reqLocal, err := http.NewRequest("GET", localURL, nil)
+	if err == nil {
+		reqLocal.Host = subDomain
+		reqLocal.Header.Set("Accept", "text/plain, */*;q=0.1")
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		reqLocal = reqLocal.WithContext(ctx)
+
+		client := &http.Client{Timeout: 3 * time.Second}
+		if resp, err := client.Do(reqLocal); err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				bodyBytes, _ = io.ReadAll(resp.Body)
+			}
+		}
 	}
 
-	// Try to fetch raw subscription links. Prefer plain text response.
-	req, err := http.NewRequest("GET", subURL, nil)
-	if err != nil {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-		return
-	}
-	// Force plain text to avoid HTML page; controller respects Accept header
-	req.Header.Set("Accept", "text/plain, */*;q=0.1")
+	// 2. Second attempt: Fallback to external subURL if local didn't return content
+	if len(bodyBytes) == 0 && subURL != "" {
+		reqExt, err := http.NewRequest("GET", subURL, nil)
+		if err == nil {
+			reqExt.Header.Set("Accept", "text/plain, */*;q=0.1")
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			reqExt = reqExt.WithContext(ctx)
 
-	// Use optimized client with connection pooling
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req = req.WithContext(ctx)
-
-	resp, err := optimizedHTTPClient.Do(req)
-	if err != nil {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-		return
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-		return
+			if resp, err := optimizedHTTPClient.Do(reqExt); err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					bodyBytes, _ = io.ReadAll(resp.Body)
+				}
+			}
+		}
 	}
 
-	// If service is configured to encode (Base64), decode it
+	if len(bodyBytes) == 0 {
+		return nil, errors.New("subscription content is empty")
+	}
+
+	// Decode Base64 if encrypted
 	encoded, _ := t.settingService.GetSubEncrypt()
 	var content string
 	if encoded {
 		decoded, err := base64.StdEncoding.DecodeString(string(bodyBytes))
 		if err != nil {
-			// fallback to raw text
 			content = string(bodyBytes)
 		} else {
 			content = string(decoded)
@@ -2688,7 +2681,6 @@ func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
 		content = string(bodyBytes)
 	}
 
-	// Normalize line endings and trim
 	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
 	var cleaned []string
 	for _, l := range lines {
@@ -2697,126 +2689,195 @@ func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
 			cleaned = append(cleaned, l)
 		}
 	}
-	if len(cleaned) == 0 {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.noResult"))
-		return
-	}
-
-	// Send in chunks to respect message length; use monospace formatting
-	const maxPerMessage = 50
-	for i := 0; i < len(cleaned); i += maxPerMessage {
-		j := i + maxPerMessage
-		if j > len(cleaned) {
-			j = len(cleaned)
-		}
-		chunk := cleaned[i:j]
-		msg := t.I18nBot("subscription.individualLinks") + ":\r\n"
-		for _, link := range chunk {
-			// wrap each link in <code>
-			msg += "<code>" + link + "</code>\r\n"
-		}
-		t.SendMsgToTgbot(chatId, msg)
-	}
+	return cleaned, nil
 }
 
-// sendClientQRLinks generates QR images for subscription URL, JSON URL, and a few individual links, then sends them
-func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
-	if awgClient, err := t.getAwgClientByEmail(email); err == nil && awgClient != nil {
-		t.sendAwgClientQR(chatId, awgClient)
-		return
-	}
+// sendClientSubLinks sends the subscription links for the client to the chat.
+func (t *Tgbot) sendClientSubLinks(chatId int64, email string) {
+	cleanEmail := strings.TrimPrefix(email, "⚡ ")
+	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
+	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
+	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
 
-	subURL, subJsonURL, err := t.buildSubscriptionURLs(email)
-	if err != nil {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-		return
-	}
-
-	// Helper to create QR PNG bytes from content
-	createQR := func(content string, size int) ([]byte, error) {
-		if size <= 0 {
-			size = 256
+	if isAwgRequest {
+		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.messages.awgNoSubNotice"))
+			t.sendAwgClientConfig(chatId, awgClient)
+			return
 		}
-		return qrcode.Encode(content, qrcode.Medium, size)
 	}
 
-	// Inform user
-	t.SendMsgToTgbot(chatId, "QRCode"+":")
-
-	// Send sub URL QR (filename: sub.png)
-	if png, err := createQR(subURL, 320); err == nil {
-		document := tu.Document(
-			tu.ID(chatId),
-			tu.FileFromBytes(png, "sub.png"),
+	// First check if there is an Xray client with this email
+	_, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
+	if client != nil {
+		subURL, subJsonURL, err := t.buildSubscriptionURLs(cleanEmail)
+		if err != nil {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
+			return
+		}
+		msg := "Subscription URL:\r\n<code>" + subURL + "</code>"
+		if subJsonURL != "" {
+			msg += "\r\n\r\nJSON URL:\r\n<code>" + subJsonURL + "</code>"
+		}
+		inlineKeyboard := tu.InlineKeyboard(
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(t.I18nBot("subscription.individualLinks")).WithCallbackData(t.encodeQuery("client_individual_links "+cleanEmail)),
+			),
+			tu.InlineKeyboardRow(
+				tu.InlineKeyboardButton(t.I18nBot("qrCode")).WithCallbackData(t.encodeQuery("client_qr_links "+cleanEmail)),
+			),
 		)
-		_, _ = bot.SendDocument(context.Background(), document)
-	} else {
-		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
+		t.SendMsgToTgbot(chatId, msg, inlineKeyboard)
+		return
 	}
 
-	// Send JSON URL QR (filename: subjson.png) when available
-	if subJsonURL != "" {
-		if png, err := createQR(subJsonURL, 320); err == nil {
+	// If no Xray client, check if it's an AWG client
+	if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.messages.awgNoSubNotice"))
+		t.sendAwgClientConfig(chatId, awgClient)
+		return
+	}
+
+	t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+t.I18nBot("tgbot.noResult"))
+}
+
+// sendClientIndividualLinks fetches the subscription content (individual links) and sends it to the user
+func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
+	cleanEmail := strings.TrimPrefix(email, "⚡ ")
+	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
+	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
+	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+
+	if isAwgRequest {
+		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+			t.sendAwgClientConfig(chatId, awgClient)
+			return
+		}
+	}
+
+	// First check if it's an Xray client
+	_, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
+	if client != nil {
+		subURL, _, err := t.buildSubscriptionURLs(cleanEmail)
+		if err != nil {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
+			return
+		}
+
+		cleaned, err := t.fetchSubscriptionLines(subURL, client.SubID)
+		if err != nil || len(cleaned) == 0 {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.noResult"))
+			return
+		}
+
+		const maxPerMessage = 50
+		for i := 0; i < len(cleaned); i += maxPerMessage {
+			j := i + maxPerMessage
+			if j > len(cleaned) {
+				j = len(cleaned)
+			}
+			chunk := cleaned[i:j]
+			msg := t.I18nBot("subscription.individualLinks") + ":\r\n"
+			for _, link := range chunk {
+				msg += "<code>" + link + "</code>\r\n"
+			}
+			t.SendMsgToTgbot(chatId, msg)
+		}
+		return
+	}
+
+	// If no Xray client, check if it's an AWG client
+	if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+		t.sendAwgClientConfig(chatId, awgClient)
+		return
+	}
+
+	t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+t.I18nBot("tgbot.noResult"))
+}
+
+// sendClientQRLinks generates QR images for subscription URL, JSON URL, and individual links, then sends them
+func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
+	cleanEmail := strings.TrimPrefix(email, "⚡ ")
+	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
+	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
+	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+
+	if isAwgRequest {
+		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+			t.sendAwgClientQR(chatId, awgClient)
+			return
+		}
+	}
+
+	// First check if it's an Xray client
+	_, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
+	if client != nil {
+		subURL, subJsonURL, err := t.buildSubscriptionURLs(cleanEmail)
+		if err != nil {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
+			return
+		}
+
+		createQR := func(content string, size int) ([]byte, error) {
+			if size <= 0 {
+				size = 256
+			}
+			return qrcode.Encode(content, qrcode.Medium, size)
+		}
+
+		t.SendMsgToTgbot(chatId, "QRCode"+":")
+
+		// Send sub URL QR (filename: sub.png)
+		if png, err := createQR(subURL, 320); err == nil {
 			document := tu.Document(
 				tu.ID(chatId),
-				tu.FileFromBytes(png, "subjson.png"),
+				tu.FileFromBytes(png, "sub.png"),
 			)
 			_, _ = bot.SendDocument(context.Background(), document)
 		} else {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
 		}
-	}
 
-	// Also generate a few individual links' QRs (first up to 5)
-	subPageURL := subURL
-	req, err := http.NewRequest("GET", subPageURL, nil)
-	if err == nil {
-		req.Header.Set("Accept", "text/plain, */*;q=0.1")
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		req = req.WithContext(ctx)
-		if resp, err := optimizedHTTPClient.Do(req); err == nil {
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			encoded, _ := t.settingService.GetSubEncrypt()
-			var content string
-			if encoded {
-				if dec, err := base64.StdEncoding.DecodeString(string(body)); err == nil {
-					content = string(dec)
-				} else {
-					content = string(body)
-				}
+		// Send JSON URL QR (filename: subjson.png) when available
+		if subJsonURL != "" {
+			if png, err := createQR(subJsonURL, 320); err == nil {
+				document := tu.Document(
+					tu.ID(chatId),
+					tu.FileFromBytes(png, "subjson.png"),
+				)
+				_, _ = bot.SendDocument(context.Background(), document)
 			} else {
-				content = string(body)
+				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
 			}
-			lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
-			var cleaned []string
-			for _, l := range lines {
-				l = strings.TrimSpace(l)
-				if l != "" {
-					cleaned = append(cleaned, l)
-				}
-			}
-			if len(cleaned) > 0 {
-				max := min(len(cleaned), 5)
-				for i := range max {
-					if png, err := createQR(cleaned[i], 320); err == nil {
-						// Use the email as filename for individual link QR
-						filename := email + ".png"
-						document := tu.Document(
-							tu.ID(chatId),
-							tu.FileFromBytes(png, filename),
-						)
-						_, _ = bot.SendDocument(context.Background(), document)
-						// Reduced delay for better performance
-						if i < max-1 { // Only delay between documents, not after the last one
-							time.Sleep(50 * time.Millisecond)
-						}
+		}
+
+		// Also generate individual links' QRs (first up to 5)
+		if cleaned, err := t.fetchSubscriptionLines(subURL, client.SubID); err == nil && len(cleaned) > 0 {
+			max := min(len(cleaned), 5)
+			for i := range max {
+				if png, err := createQR(cleaned[i], 320); err == nil {
+					filename := fmt.Sprintf("%s_%d.png", cleanEmail, i+1)
+					document := tu.Document(
+						tu.ID(chatId),
+						tu.FileFromBytes(png, filename),
+					)
+					_, _ = bot.SendDocument(context.Background(), document)
+					if i < max-1 {
+						time.Sleep(50 * time.Millisecond)
 					}
 				}
 			}
 		}
+		return
 	}
+
+	// If no Xray client, check if it's an AWG client
+	if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+		t.sendAwgClientQR(chatId, awgClient)
+		return
+	}
+
+	t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+t.I18nBot("tgbot.noResult"))
 }
 
 // isUserRegistered reports whether a Telegram user already has clients in Xray or AWG.
@@ -2891,7 +2952,7 @@ func (t *Tgbot) getAllClientTrafficsForTgUser(tgUserID int64) []*xray.ClientTraf
 		for _, c := range awgClients {
 			if c.TgId == tgUserID {
 				traffics = append(traffics, &xray.ClientTraffic{
-					Email:      c.Email,
+					Email:      "⚡ " + c.Email + " (AWG)",
 					Up:         c.Upload,
 					Down:       c.Download,
 					Total:      c.TotalGB,
@@ -3229,31 +3290,41 @@ func (t *Tgbot) getInboundClientsFor(inboundID int, action string) (*telego.Inli
 		logger.Warning("getInboundClientsFor run failed:", err)
 		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
 	}
-	clients, err := t.inboundService.GetClients(inbound)
-	var buttons []telego.InlineKeyboardButton
-
-	if err != nil {
-		logger.Warning("GetInboundClients run failed:", err)
-		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
-	} else {
-		if len(clients) > 0 {
-			for _, client := range clients {
-				buttons = append(buttons, tu.InlineKeyboardButton(client.Email).WithCallbackData(t.encodeQuery(action+" "+client.Email)))
+	clients, _ := t.inboundService.GetClients(inbound)
+	isAwg := (inbound.Protocol == model.Tunnel || inbound.Protocol == model.WireGuard || inbound.Tag == "tunnel" || inbound.Protocol == "tunnel" || inbound.Protocol == "wireguard")
+	if len(clients) == 0 && isAwg {
+		awgClients, awgErr := t.awgService.GetClients()
+		if awgErr == nil && len(awgClients) > 0 {
+			clients = make([]model.Client, 0, len(awgClients))
+			for _, ac := range awgClients {
+				clients = append(clients, model.Client{
+					Email:  ac.Email,
+					Enable: ac.Enable,
+					TgID:   ac.TgId,
+					ID:     ac.UUID,
+				})
 			}
-
-		} else {
-			return nil, errors.New(t.I18nBot("tgbot.answers.getClientsFailed"))
 		}
-
 	}
-	cols := 0
+
+	if len(clients) == 0 {
+		return nil, errors.New(t.I18nBot("tgbot.answers.getClientsFailed"))
+	}
+
+	var buttons []telego.InlineKeyboardButton
+	for _, client := range clients {
+		callbackPayload := action + " " + client.Email
+		if isAwg {
+			callbackPayload = action + " awg:" + client.Email
+		}
+		buttons = append(buttons, tu.InlineKeyboardButton(client.Email).WithCallbackData(t.encodeQuery(callbackPayload)))
+	}
+
+	cols := 2
 	if len(buttons) < 6 {
 		cols = 3
-	} else {
-		cols = 2
 	}
 	keyboard := tu.InlineKeyboardGrid(tu.InlineKeyboardCols(cols, buttons...))
-
 	return keyboard, nil
 }
 
@@ -3307,31 +3378,41 @@ func (t *Tgbot) getInboundClients(id int) (*telego.InlineKeyboardMarkup, error) 
 		logger.Warning("getIboundClients run failed:", err)
 		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
 	}
-	clients, err := t.inboundService.GetClients(inbound)
-	var buttons []telego.InlineKeyboardButton
-
-	if err != nil {
-		logger.Warning("GetInboundClients run failed:", err)
-		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
-	} else {
-		if len(clients) > 0 {
-			for _, client := range clients {
-				buttons = append(buttons, tu.InlineKeyboardButton(client.Email).WithCallbackData(t.encodeQuery("client_get_usage "+client.Email)))
+	clients, _ := t.inboundService.GetClients(inbound)
+	isAwg := (inbound.Protocol == model.Tunnel || inbound.Protocol == model.WireGuard || inbound.Tag == "tunnel" || inbound.Protocol == "tunnel" || inbound.Protocol == "wireguard")
+	if len(clients) == 0 && isAwg {
+		awgClients, awgErr := t.awgService.GetClients()
+		if awgErr == nil && len(awgClients) > 0 {
+			clients = make([]model.Client, 0, len(awgClients))
+			for _, ac := range awgClients {
+				clients = append(clients, model.Client{
+					Email:  ac.Email,
+					Enable: ac.Enable,
+					TgID:   ac.TgId,
+					ID:     ac.UUID,
+				})
 			}
-
-		} else {
-			return nil, errors.New(t.I18nBot("tgbot.answers.getClientsFailed"))
 		}
-
 	}
-	cols := 0
+
+	if len(clients) == 0 {
+		return nil, errors.New(t.I18nBot("tgbot.answers.getClientsFailed"))
+	}
+
+	var buttons []telego.InlineKeyboardButton
+	for _, client := range clients {
+		callbackPayload := "client_get_usage " + client.Email
+		if isAwg {
+			callbackPayload = "client_get_usage awg:" + client.Email
+		}
+		buttons = append(buttons, tu.InlineKeyboardButton(client.Email).WithCallbackData(t.encodeQuery(callbackPayload)))
+	}
+
+	cols := 2
 	if len(buttons) < 6 {
 		cols = 3
-	} else {
-		cols = 2
 	}
 	keyboard := tu.InlineKeyboardGrid(tu.InlineKeyboardCols(cols, buttons...))
-
 	return keyboard, nil
 }
 
@@ -3610,7 +3691,21 @@ func (t *Tgbot) clientTelegramUserInfo(chatId int64, email string, messageID ...
 
 // searchClient searches for a client by email and sends the information.
 func (t *Tgbot) searchClient(chatId int64, email string, messageID ...int) {
-	traffic, err := t.inboundService.GetClientTrafficByEmail(email)
+	cleanEmail := strings.TrimPrefix(email, "awg:")
+	traffic, err := t.inboundService.GetClientTrafficByEmail(cleanEmail)
+	if err != nil || traffic == nil {
+		if awgClient, awgErr := t.getAwgClientByEmail(cleanEmail); awgErr == nil && awgClient != nil {
+			traffic = &xray.ClientTraffic{
+				Email:      awgClient.Email,
+				Enable:     awgClient.Enable,
+				Up:         awgClient.Upload,
+				Down:       awgClient.Download,
+				Total:      awgClient.TotalGB,
+				ExpiryTime: awgClient.ExpiryTime,
+			}
+			err = nil
+		}
+	}
 	if err != nil {
 		logger.Warning(err)
 		msg := t.I18nBot("tgbot.wentWrong")
