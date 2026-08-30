@@ -1336,27 +1336,27 @@ update_x-ui() {
     echo -e "${green}Downloading new x-ui version...${plain}"
 
     if [[ "$1" == "--beta" || "$1" == "--pre" ]]; then
-        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
+        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/0pavel1/3ax-ui/releases" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
         if [[ ! -n "$tag_version" ]]; then
             echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-            tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
+            tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/0pavel1/3ax-ui/releases" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' | head -1)
         fi
         echo -e "Got x-ui latest pre-release version: ${tag_version}, beginning the installation..."
     else
-        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        tag_version=$(${curl_bin} -Ls "https://api.github.com/repos/0pavel1/3ax-ui/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$tag_version" ]]; then
             echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-            tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/coinman-dev/3ax-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+            tag_version=$(${curl_bin} -4 -Ls "https://api.github.com/repos/0pavel1/3ax-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         fi
         echo -e "Got x-ui latest version: ${tag_version}, beginning the installation..."
     fi
     if [[ ! -n "$tag_version" ]]; then
         _fail "ERROR: Failed to fetch x-ui version, it may be due to GitHub API restrictions, please try it later"
     fi
-    ${curl_bin} -fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/coinman-dev/3ax-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz 2>/dev/null
+    ${curl_bin} -fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/0pavel1/3ax-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz 2>/dev/null
     if [[ $? -ne 0 ]]; then
         echo -e "${yellow}Trying to fetch version with IPv4...${plain}"
-        ${curl_bin} -4fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/coinman-dev/3ax-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz 2>/dev/null
+        ${curl_bin} -4fLRo ${xui_folder}-linux-$(arch).tar.gz https://github.com/0pavel1/3ax-ui/releases/download/${tag_version}/x-ui-linux-$(arch).tar.gz 2>/dev/null
         if [[ $? -ne 0 ]]; then
             _fail "ERROR: Failed to download x-ui, please be sure that your server can access GitHub"
         fi
@@ -1468,10 +1468,10 @@ update_x-ui() {
     fi
     
     echo -e "${green}Downloading and installing x-ui.sh script...${plain}"
-    ${curl_bin} -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.sh >/dev/null 2>&1
+    ${curl_bin} -fLRo /usr/bin/x-ui https://raw.githubusercontent.com/0pavel1/3ax-ui/${REPO_BRANCH}/x-ui.sh >/dev/null 2>&1
     if [[ $? -ne 0 ]]; then
         echo -e "${yellow}Trying to fetch x-ui with IPv4...${plain}"
-        ${curl_bin} -4fLRo /usr/bin/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.sh >/dev/null 2>&1
+        ${curl_bin} -4fLRo /usr/bin/x-ui https://raw.githubusercontent.com/0pavel1/3ax-ui/${REPO_BRANCH}/x-ui.sh >/dev/null 2>&1
         if [[ $? -ne 0 ]]; then
             _fail "ERROR: Failed to download x-ui.sh script, please be sure that your server can access GitHub"
         fi
@@ -1502,9 +1502,9 @@ update_x-ui_install_service() {
         if [ -f "${xui_folder}/x-ui.rc" ]; then
             cp -f "${xui_folder}/x-ui.rc" /etc/init.d/x-ui >/dev/null 2>&1
         else
-            ${curl_bin} -fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.rc >/dev/null 2>&1
+            ${curl_bin} -fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/0pavel1/3ax-ui/${REPO_BRANCH}/x-ui.rc >/dev/null 2>&1
             if [[ $? -ne 0 ]]; then
-                ${curl_bin} -4fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.rc >/dev/null 2>&1
+                ${curl_bin} -4fLRo /etc/init.d/x-ui https://raw.githubusercontent.com/0pavel1/3ax-ui/${REPO_BRANCH}/x-ui.rc >/dev/null 2>&1
                 [[ $? -ne 0 ]] && _fail "ERROR: Failed to download startup unit x-ui.rc"
             fi
         fi
@@ -1547,13 +1547,13 @@ update_x-ui_install_service() {
         echo -e "${yellow}Service files not found locally, downloading from GitHub...${plain}"
         case "${release}" in
             ubuntu | debian | armbian)
-                ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.service.debian >/dev/null 2>&1
+                ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/0pavel1/3ax-ui/${REPO_BRANCH}/x-ui.service.debian >/dev/null 2>&1
             ;;
             arch | manjaro | parch)
-                ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.service.arch >/dev/null 2>&1
+                ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/0pavel1/3ax-ui/${REPO_BRANCH}/x-ui.service.arch >/dev/null 2>&1
             ;;
             *)
-                ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/coinman-dev/3ax-ui/${REPO_BRANCH}/x-ui.service.rhel >/dev/null 2>&1
+                ${curl_bin} -4fLRo ${xui_service}/x-ui.service https://raw.githubusercontent.com/0pavel1/3ax-ui/${REPO_BRANCH}/x-ui.service.rhel >/dev/null 2>&1
             ;;
         esac
         [[ $? -ne 0 ]] && _fail "ERROR: Failed to install x-ui.service from GitHub"
