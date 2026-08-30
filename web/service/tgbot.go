@@ -92,7 +92,10 @@ var (
 	client_Method       string
 )
 
-var userStates = make(map[int64]string)
+var (
+	userStates    = make(map[int64]string)
+	regFirstNames = make(map[int64]string)
+)
 
 // LoginStatus represents the result of a login attempt.
 type LoginStatus byte
@@ -499,6 +502,69 @@ func (t *Tgbot) OnReceive() {
 		h.HandleMessage(func(ctx *th.Context, message telego.Message) error {
 			if userState, exists := userStates[message.Chat.ID]; exists {
 				switch userState {
+				case "awaiting_reg_firstname":
+					text := strings.TrimSpace(message.Text)
+					if !IsStrictCyrillic(text) {
+						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.registration.onlyCyrillicFirstname"))
+						return nil
+					}
+					regFirstNames[message.Chat.ID] = text
+					userStates[message.Chat.ID] = "awaiting_reg_lastname"
+					t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.registration.askLastname"))
+					return nil
+
+				case "awaiting_reg_lastname":
+					text := strings.TrimSpace(message.Text)
+					if !IsStrictCyrillic(text) {
+						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.registration.onlyCyrillicLastname"))
+						return nil
+					}
+					firstName := regFirstNames[message.Chat.ID]
+					delete(regFirstNames, message.Chat.ID)
+					delete(userStates, message.Chat.ID)
+
+					lastName := text
+					slug := ToUserSlug(firstName, lastName)
+					username := message.From.Username
+					if username == "" {
+						username = "-"
+					}
+
+					reg := &model.PendingRegistration{
+						TgID:      message.From.ID,
+						ChatID:    message.Chat.ID,
+						Username:  username,
+						FirstName: firstName,
+						LastName:  lastName,
+						Slug:      slug,
+						Status:    model.RegPending,
+					}
+					if err := SavePendingRegistration(reg); err != nil {
+						logger.Errorf("Failed to save pending registration: %v", err)
+						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.answers.errorOperation"))
+						return nil
+					}
+
+					// Notify user
+					t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.registration.submitted"))
+
+					// Notify admins
+					adminMsg := t.I18nBot("tgbot.registration.adminNotice",
+						"FirstName=="+firstName,
+						"LastName=="+lastName,
+						"Slug=="+slug,
+						"TgID=="+strconv.FormatInt(message.From.ID, 10),
+						"Username=="+username,
+					)
+					adminKB := tu.InlineKeyboard(
+						tu.InlineKeyboardRow(
+							tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.approveReg")).WithCallbackData(t.encodeQuery(fmt.Sprintf("approve_reg %d", message.From.ID))),
+							tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.rejectReg")).WithCallbackData(t.encodeQuery(fmt.Sprintf("reject_reg %d", message.From.ID))),
+						),
+					)
+					t.SendMsgToTgbotAdmins(adminMsg, adminKB)
+					return nil
+
 				case "awaiting_id":
 					if client_Id == strings.TrimSpace(message.Text) {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.using_default_value"), 3, tu.ReplyKeyboardRemove())
@@ -663,11 +729,28 @@ func (t *Tgbot) answerCommand(message *telego.Message, chatId int64, isAdmin boo
 		msg += t.I18nBot("tgbot.commands.help")
 		msg += t.I18nBot("tgbot.commands.pleaseChoose")
 	case "start":
-		msg += t.I18nBot("tgbot.commands.start", "Firstname=="+html.EscapeString(message.From.FirstName))
 		if isAdmin {
+			msg += t.I18nBot("tgbot.commands.start", "Firstname=="+html.EscapeString(message.From.FirstName))
 			msg += t.I18nBot("tgbot.commands.welcome", "Hostname=="+hostname)
+			msg += "\n\n" + t.I18nBot("tgbot.commands.pleaseChoose")
+			break
 		}
-		msg += "\n\n" + t.I18nBot("tgbot.commands.pleaseChoose")
+
+		if t.isUserRegistered(message.From.ID) {
+			msg += t.I18nBot("tgbot.commands.start", "Firstname=="+html.EscapeString(message.From.FirstName))
+			msg += "\n\n" + t.I18nBot("tgbot.commands.pleaseChoose")
+			break
+		}
+
+		if HasPendingApplication(message.From.ID) {
+			onlyMessage = true
+			msg = t.I18nBot("tgbot.registration.alreadyPending")
+			break
+		}
+
+		userStates[chatId] = "awaiting_reg_firstname"
+		onlyMessage = true
+		msg = t.I18nBot("tgbot.registration.askFirstname")
 	case "status":
 		onlyMessage = true
 		msg += t.I18nBot("tgbot.commands.status")
@@ -768,6 +851,49 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 		if len(dataArray) >= 2 && len(dataArray[1]) > 0 {
 			email := dataArray[1]
 			switch dataArray[0] {
+			case "approve_reg":
+				tgId, _ := strconv.ParseInt(dataArray[1], 10, 64)
+				reg, err := GetPendingRegistration(tgId)
+				if err != nil || reg == nil {
+					t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.registration.notFound"))
+					return
+				}
+				if reg.Status != model.RegPending {
+					t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.registration.alreadyHandled"))
+					return
+				}
+				_ = UpdateRegistrationStatus(tgId, model.RegApproved)
+				excludeIds, _ := t.settingService.GetTgBotExcludeInboundIds()
+				count, err := RegisterUserInbounds(reg, excludeIds, &t.inboundService, &t.awgService)
+				if err != nil {
+					t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.registration.failed", "Error=="+err.Error()))
+					return
+				}
+				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.answers.successfulOperation"))
+				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.registration.approvedAdmin", "Slug=="+reg.Slug, "Count=="+strconv.Itoa(count)))
+
+				// Send welcome + instruction to user
+				userWelcome := t.I18nBot("tgbot.registration.userApprovedWelcome")
+				t.SendMsgToTgbot(reg.ChatID, userWelcome)
+				t.sendInstruction(reg.ChatID)
+				t.SendAnswer(reg.ChatID, t.I18nBot("tgbot.commands.pleaseChoose"), false)
+				return
+			case "reject_reg":
+				tgId, _ := strconv.ParseInt(dataArray[1], 10, 64)
+				reg, _ := GetPendingRegistration(tgId)
+				slug := "client"
+				var userChatId int64
+				if reg != nil {
+					slug = reg.Slug
+					userChatId = reg.ChatID
+				}
+				_ = UpdateRegistrationStatus(tgId, model.RegRejected)
+				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.answers.successfulOperation"))
+				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.registration.rejectedAdmin", "Slug=="+slug))
+				if userChatId != 0 {
+					t.SendMsgToTgbot(userChatId, t.I18nBot("tgbot.registration.userRejectedNotice"))
+				}
+				return
 			case "get_clients_for_sub":
 				inboundId := dataArray[1]
 				inboundIdInt, err := strconv.Atoi(inboundId)
@@ -1650,15 +1776,13 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 	case "client_commands":
 		t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.buttons.commands"))
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.commands.helpClientCommands"))
+	case "client_instruction":
+		t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.buttons.instruction"))
+		t.sendInstruction(chatId)
 	case "client_sub_links":
 		// show user's own clients to choose one for sub links
 		tgUserID := callbackQuery.From.ID
-		traffics, err := t.inboundService.GetClientTrafficTgBot(tgUserID)
-		if err != nil {
-			// fallback to message
-			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-			return
-		}
+		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.askToAddUserId", "TgUserID=="+strconv.FormatInt(tgUserID, 10)))
 			return
@@ -1676,11 +1800,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 	case "client_individual_links":
 		// show user's clients to choose for individual links
 		tgUserID := callbackQuery.From.ID
-		traffics, err := t.inboundService.GetClientTrafficTgBot(tgUserID)
-		if err != nil {
-			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-			return
-		}
+		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.askToAddUserId", "TgUserID=="+strconv.FormatInt(tgUserID, 10)))
 			return
@@ -1698,11 +1818,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 	case "client_qr_links":
 		// show user's clients to choose for QR codes
 		tgUserID := callbackQuery.From.ID
-		traffics, err := t.inboundService.GetClientTrafficTgBot(tgUserID)
-		if err != nil {
-			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOccurred")+"\r\n"+err.Error())
-			return
-		}
+		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.askToAddUserId", "TgUserID=="+strconv.FormatInt(tgUserID, 10)))
 			return
@@ -2076,7 +2192,7 @@ func (t *Tgbot) BuildInboundClientDataMessage(inbound_remark string, protocol mo
 	case model.VMESS, model.VLESS:
 		message = t.I18nBot("tgbot.messages.inbound_client_data_id", "InboundRemark=="+inbound_remark, "ClientId=="+client_Id, "ClientEmail=="+client_Email, "ClientTraffic=="+traffic_value, "ClientExp=="+expiryTime, "IpLimit=="+ip_limit, "ClientComment=="+client_Comment)
 
-	case model.Trojan:
+	case model.Trojan, model.Hysteria:
 		message = t.I18nBot("tgbot.messages.inbound_client_data_pass", "InboundRemark=="+inbound_remark, "ClientPass=="+client_TrPassword, "ClientEmail=="+client_Email, "ClientTraffic=="+traffic_value, "ClientExp=="+expiryTime, "IpLimit=="+ip_limit, "ClientComment=="+client_Comment)
 
 	case model.Shadowsocks:
@@ -2132,6 +2248,22 @@ func (t *Tgbot) BuildJSONForProtocol(protocol model.Protocol) (string, error) {
 		jsonString = fmt.Sprintf(`{
             "clients": [{
                 "password": "%s",
+                "email": "%s",
+                "limitIp": %d,
+                "totalGB": %d,
+                "expiryTime": %d,
+                "enable": %t,
+                "tgId": "%s",
+                "subId": "%s",
+                "comment": "%s",
+                "reset": %d
+            }]
+        }`, client_TrPassword, client_Email, client_LimitIP, client_TotalGB, client_ExpiryTime, client_Enable, client_TgID, client_SubID, client_Comment, client_Reset)
+
+	case model.Hysteria:
+		jsonString = fmt.Sprintf(`{
+            "clients": [{
+                "auth": "%s",
                 "email": "%s",
                 "limitIp": %d,
                 "totalGB": %d,
@@ -2245,6 +2377,7 @@ func (t *Tgbot) SendAnswer(chatId int64, msg string, isAdmin bool) {
 		),
 		tu.InlineKeyboardRow(
 			tu.InlineKeyboardButton(t.I18nBot("qrCode")).WithCallbackData(t.encodeQuery("client_qr_links")),
+			tu.InlineKeyboardButton(t.I18nBot("tgbot.buttons.instruction")).WithCallbackData(t.encodeQuery("client_instruction")),
 		),
 	)
 
@@ -2427,6 +2560,12 @@ func (t *Tgbot) buildSubscriptionURLs(email string) (string, string, error) {
 
 // sendClientSubLinks sends the subscription links for the client to the chat.
 func (t *Tgbot) sendClientSubLinks(chatId int64, email string) {
+	if awgClient, err := t.getAwgClientByEmail(email); err == nil && awgClient != nil {
+		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.messages.awgNoSubNotice"))
+		t.sendAwgClientConfig(chatId, awgClient)
+		return
+	}
+
 	subURL, subJsonURL, err := t.buildSubscriptionURLs(email)
 	if err != nil {
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
@@ -2449,6 +2588,11 @@ func (t *Tgbot) sendClientSubLinks(chatId int64, email string) {
 
 // sendClientIndividualLinks fetches the subscription content (individual links) and sends it to the user
 func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
+	if awgClient, err := t.getAwgClientByEmail(email); err == nil && awgClient != nil {
+		t.sendAwgClientConfig(chatId, awgClient)
+		return
+	}
+
 	// Build the HTML sub page URL; we'll call it with header Accept to get raw content
 	subURL, _, err := t.buildSubscriptionURLs(email)
 	if err != nil {
@@ -2531,6 +2675,11 @@ func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
 
 // sendClientQRLinks generates QR images for subscription URL, JSON URL, and a few individual links, then sends them
 func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
+	if awgClient, err := t.getAwgClientByEmail(email); err == nil && awgClient != nil {
+		t.sendAwgClientQR(chatId, awgClient)
+		return
+	}
+
 	subURL, subJsonURL, err := t.buildSubscriptionURLs(email)
 	if err != nil {
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
@@ -2622,6 +2771,92 @@ func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
 			}
 		}
 	}
+}
+
+// isUserRegistered reports whether a Telegram user already has clients in Xray or AWG.
+func (t *Tgbot) isUserRegistered(tgId int64) bool {
+	traffics, err := t.inboundService.GetClientTrafficTgBot(tgId)
+	if err == nil && len(traffics) > 0 {
+		return true
+	}
+	awgClients, err := t.awgService.GetClients()
+	if err == nil {
+		for _, c := range awgClients {
+			if c.TgId == tgId {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (t *Tgbot) getAwgClientByEmail(email string) (*model.TunnelClient, error) {
+	clients, err := t.awgService.GetClients()
+	if err != nil {
+		return nil, err
+	}
+	for i := range clients {
+		if clients[i].Email == email {
+			return &clients[i], nil
+		}
+	}
+	return nil, errors.New("client not found")
+}
+
+func (t *Tgbot) sendAwgClientConfig(chatId int64, c *model.TunnelClient) {
+	conf, err := t.awgService.GetClientConfig(c.Id)
+	if err != nil || conf == "" {
+		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation"))
+		return
+	}
+	filename := c.Email + ".conf"
+	msg := fmt.Sprintf("⚡ <b>AmneziaWG Config: %s</b>\n\n<code>%s</code>", html.EscapeString(c.Email), html.EscapeString(conf))
+	t.SendMsgToTgbot(chatId, msg)
+	doc := tu.Document(tu.ID(chatId), tu.FileFromBytes([]byte(conf), filename))
+	_, _ = bot.SendDocument(context.Background(), doc)
+}
+
+func (t *Tgbot) sendAwgClientQR(chatId int64, c *model.TunnelClient) {
+	conf, err := t.awgService.GetClientConfig(c.Id)
+	if err != nil || conf == "" {
+		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation"))
+		return
+	}
+	filename := c.Email + "_awg.png"
+	if png, err := qrcode.Encode(conf, qrcode.Medium, 320); err == nil {
+		doc := tu.Document(tu.ID(chatId), tu.FileFromBytes(png, filename))
+		_, _ = bot.SendDocument(context.Background(), doc)
+	} else {
+		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation"))
+	}
+}
+
+func (t *Tgbot) sendInstruction(chatId int64) {
+	t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.messages.instructionText"))
+}
+
+func (t *Tgbot) getAllClientTrafficsForTgUser(tgUserID int64) []*xray.ClientTraffic {
+	traffics, _ := t.inboundService.GetClientTrafficTgBot(tgUserID)
+	if traffics == nil {
+		traffics = make([]*xray.ClientTraffic, 0)
+	}
+	awgClients, err := t.awgService.GetClients()
+	if err == nil {
+		for _, c := range awgClients {
+			if c.TgId == tgUserID {
+				traffics = append(traffics, &xray.ClientTraffic{
+					Email:      c.Email,
+					Up:         c.Upload,
+					Down:       c.Download,
+					Total:      c.TotalGB,
+					ExpiryTime: c.ExpiryTime,
+					Enable:     c.Enable,
+					LastOnline: c.LastOnline,
+				})
+			}
+		}
+	}
+	return traffics
 }
 
 // SendAwgConfigsToClients sends every enabled AWG client that has a linked
@@ -3106,8 +3341,16 @@ func (t *Tgbot) clientInfoMsg(
 	enabled := ""
 	isEnabled, err := t.inboundService.checkIsEnabledByEmail(traffic.Email)
 	if err != nil {
-		logger.Warning(err)
-		enabled = t.I18nBot("tgbot.wentWrong")
+		if awgClient, aerr := t.getAwgClientByEmail(traffic.Email); aerr == nil && awgClient != nil {
+			if awgClient.Enable {
+				enabled = t.I18nBot("tgbot.messages.yes")
+			} else {
+				enabled = t.I18nBot("tgbot.messages.no")
+			}
+		} else {
+			logger.Warning(err)
+			enabled = t.I18nBot("tgbot.wentWrong")
+		}
 	} else if isEnabled {
 		enabled = t.I18nBot("tgbot.messages.yes")
 	} else {
@@ -3125,6 +3368,13 @@ func (t *Tgbot) clientInfoMsg(
 	isOnline := false
 	if xrayProcRunning() {
 		if slices.Contains(xrayOnlineClients(), traffic.Email) {
+			status = t.I18nBot("tgbot.online")
+			isOnline = true
+		}
+	}
+	if !isOnline {
+		awgOnlines := t.awgService.GetOnlineClients()
+		if slices.Contains(awgOnlines, traffic.Email) {
 			status = t.I18nBot("tgbot.online")
 			isOnline = true
 		}
@@ -3165,14 +3415,7 @@ func (t *Tgbot) clientInfoMsg(
 
 // getClientUsage retrieves and sends client usage information to the chat.
 func (t *Tgbot) getClientUsage(chatId int64, tgUserID int64, email ...string) {
-	traffics, err := t.inboundService.GetClientTrafficTgBot(tgUserID)
-	if err != nil {
-		logger.Warning(err)
-		msg := t.I18nBot("tgbot.wentWrong")
-		t.SendMsgToTgbot(chatId, msg)
-		return
-	}
-
+	traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 	if len(traffics) == 0 {
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.askToAddUserId", "TgUserID=="+strconv.FormatInt(tgUserID, 10)))
 		return
