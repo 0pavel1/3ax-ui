@@ -907,8 +907,12 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
 					return
 				}
-				inbound, _ := t.inboundService.GetInbound(inboundIdInt)
-				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseClient", "Inbound=="+inbound.Remark), clientsKB)
+				remark := inboundId
+				if inbound, _ := t.inboundService.GetInbound(inboundIdInt); inbound != nil {
+					remark = inbound.Remark
+				}
+				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseClient", "Inbound=="+remark), clientsKB)
+				return
 			case "get_clients_for_individual":
 				inboundId := dataArray[1]
 				inboundIdInt, err := strconv.Atoi(inboundId)
@@ -916,13 +920,17 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
 					return
 				}
-				clientsKB, err := t.getInboundClientsFor(inboundIdInt, "client_individual_links")
+				clientsKB, err := t.getInboundClientsFor(inboundIdInt, fmt.Sprintf("inbound_client_individual %d", inboundIdInt))
 				if err != nil {
 					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
 					return
 				}
-				inbound, _ := t.inboundService.GetInbound(inboundIdInt)
-				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseClient", "Inbound=="+inbound.Remark), clientsKB)
+				remark := inboundId
+				if inbound, _ := t.inboundService.GetInbound(inboundIdInt); inbound != nil {
+					remark = inbound.Remark
+				}
+				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseClient", "Inbound=="+remark), clientsKB)
+				return
 			case "get_clients_for_qr":
 				inboundId := dataArray[1]
 				inboundIdInt, err := strconv.Atoi(inboundId)
@@ -930,13 +938,31 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
 					return
 				}
-				clientsKB, err := t.getInboundClientsFor(inboundIdInt, "client_qr_links")
+				clientsKB, err := t.getInboundClientsFor(inboundIdInt, fmt.Sprintf("inbound_client_qr %d", inboundIdInt))
 				if err != nil {
 					t.sendCallbackAnswerTgBot(callbackQuery.ID, err.Error())
 					return
 				}
-				inbound, _ := t.inboundService.GetInbound(inboundIdInt)
-				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseClient", "Inbound=="+inbound.Remark), clientsKB)
+				remark := inboundId
+				if inbound, _ := t.inboundService.GetInbound(inboundIdInt); inbound != nil {
+					remark = inbound.Remark
+				}
+				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.chooseClient", "Inbound=="+remark), clientsKB)
+				return
+			case "inbound_client_individual":
+				if len(dataArray) >= 3 {
+					inboundIdInt, _ := strconv.Atoi(dataArray[1])
+					email := strings.Join(dataArray[2:], " ")
+					t.sendSingleInboundClientLink(chatId, inboundIdInt, email)
+					return
+				}
+			case "inbound_client_qr":
+				if len(dataArray) >= 3 {
+					inboundIdInt, _ := strconv.Atoi(dataArray[1])
+					email := strings.Join(dataArray[2:], " ")
+					t.sendSingleInboundClientQR(chatId, inboundIdInt, email)
+					return
+				}
 			case "client_sub_links":
 				t.sendClientSubLinks(chatId, email)
 				return
@@ -2880,6 +2906,170 @@ func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
 	t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+t.I18nBot("tgbot.noResult"))
 }
 
+// sendSingleInboundClientLink sends only the individual connection link for a specific inbound.
+func (t *Tgbot) sendSingleInboundClientLink(chatId int64, inboundID int, email string) {
+	cleanEmail := strings.TrimPrefix(email, "⚡ ")
+	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
+	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
+	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+
+	inbound, _ := t.inboundService.GetInbound(inboundID)
+	proto := ""
+	remark := ""
+	if inbound != nil {
+		proto = strings.ToLower(string(inbound.Protocol))
+		remark = strings.ToLower(inbound.Remark)
+	}
+	isAwgInbound := isAwgRequest || proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" ||
+		strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
+		strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard")
+
+	if isAwgInbound {
+		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+			t.sendAwgClientConfig(chatId, awgClient)
+			return
+		}
+	}
+
+	// For Xray inbound:
+	_, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
+	if client != nil {
+		subURL, _, err := t.buildSubscriptionURLs(cleanEmail)
+		if err != nil {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
+			return
+		}
+
+		cleaned, err := t.fetchSubscriptionLines(subURL, client.SubID)
+		if err != nil || len(cleaned) == 0 {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.noResult"))
+			return
+		}
+
+		var matchedLinks []string
+		if inbound != nil {
+			inboundRemarkLower := strings.ToLower(inbound.Remark)
+			portStr := fmt.Sprintf(":%d", inbound.Port)
+			for _, link := range cleaned {
+				unescaped, _ := url.PathUnescape(link)
+				unescapedLower := strings.ToLower(unescaped)
+				if (inbound.Remark != "" && strings.Contains(unescapedLower, inboundRemarkLower)) || strings.Contains(link, portStr) {
+					matchedLinks = append(matchedLinks, link)
+				}
+			}
+		}
+
+		if len(matchedLinks) == 0 {
+			matchedLinks = cleaned
+		}
+
+		msg := t.I18nBot("subscription.individualLinks") + ":\r\n"
+		for _, link := range matchedLinks {
+			msg += "<code>" + link + "</code>\r\n"
+		}
+		t.SendMsgToTgbot(chatId, msg)
+		return
+	}
+
+	// Fallback to AWG
+	if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+		t.sendAwgClientConfig(chatId, awgClient)
+		return
+	}
+
+	t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+t.I18nBot("tgbot.noResult"))
+}
+
+// sendSingleInboundClientQR sends only the QR code for a specific inbound.
+func (t *Tgbot) sendSingleInboundClientQR(chatId int64, inboundID int, email string) {
+	cleanEmail := strings.TrimPrefix(email, "⚡ ")
+	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
+	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
+	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+
+	inbound, _ := t.inboundService.GetInbound(inboundID)
+	proto := ""
+	remark := ""
+	if inbound != nil {
+		proto = strings.ToLower(string(inbound.Protocol))
+		remark = strings.ToLower(inbound.Remark)
+	}
+	isAwgInbound := isAwgRequest || proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" ||
+		strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
+		strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard")
+
+	if isAwgInbound {
+		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+			t.sendAwgClientQR(chatId, awgClient)
+			return
+		}
+	}
+
+	// For Xray inbound:
+	_, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
+	if client != nil {
+		subURL, _, err := t.buildSubscriptionURLs(cleanEmail)
+		if err != nil {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
+			return
+		}
+
+		cleaned, err := t.fetchSubscriptionLines(subURL, client.SubID)
+		if err != nil || len(cleaned) == 0 {
+			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.noResult"))
+			return
+		}
+
+		var matchedLinks []string
+		if inbound != nil {
+			inboundRemarkLower := strings.ToLower(inbound.Remark)
+			portStr := fmt.Sprintf(":%d", inbound.Port)
+			for _, link := range cleaned {
+				unescaped, _ := url.PathUnescape(link)
+				unescapedLower := strings.ToLower(unescaped)
+				if (inbound.Remark != "" && strings.Contains(unescapedLower, inboundRemarkLower)) || strings.Contains(link, portStr) {
+					matchedLinks = append(matchedLinks, link)
+				}
+			}
+		}
+
+		if len(matchedLinks) == 0 {
+			matchedLinks = cleaned
+		}
+
+		createQR := func(content string, size int) ([]byte, error) {
+			if size <= 0 {
+				size = 256
+			}
+			return qrcode.Encode(content, qrcode.Medium, size)
+		}
+
+		t.SendMsgToTgbot(chatId, "QRCode"+":")
+		for i, link := range matchedLinks {
+			if png, err := createQR(link, 320); err == nil {
+				filename := fmt.Sprintf("%s_%d.png", cleanEmail, i+1)
+				document := tu.Document(
+					tu.ID(chatId),
+					tu.FileFromBytes(png, filename),
+				)
+				_, _ = bot.SendDocument(context.Background(), document)
+				if i < len(matchedLinks)-1 {
+					time.Sleep(50 * time.Millisecond)
+				}
+			}
+		}
+		return
+	}
+
+	// Fallback to AWG
+	if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
+		t.sendAwgClientQR(chatId, awgClient)
+		return
+	}
+
+	t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+t.I18nBot("tgbot.noResult"))
+}
+
 // isUserRegistered reports whether a Telegram user already has clients in Xray or AWG.
 func (t *Tgbot) isUserRegistered(tgId int64) bool {
 	traffics, err := t.inboundService.GetClientTrafficTgBot(tgId)
@@ -3283,6 +3473,42 @@ func (t *Tgbot) getInboundsFor(nextAction string) (*telego.InlineKeyboardMarkup,
 	return keyboard, nil
 }
 
+// getClientsForInbound safely retrieves all clients for any inbound type (Xray, AWG, WG, etc.).
+func (t *Tgbot) getClientsForInbound(inbound *model.Inbound) ([]model.Client, bool) {
+	if inbound == nil {
+		return nil, false
+	}
+	clients, _ := t.inboundService.GetClients(inbound)
+	if len(clients) > 0 {
+		return clients, false
+	}
+
+	proto := strings.ToLower(string(inbound.Protocol))
+	remark := strings.ToLower(inbound.Remark)
+	isAwg := proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" ||
+		strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
+		strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard")
+
+	if isAwg || len(clients) == 0 {
+		var tunnelClients []model.TunnelClient
+		db := database.GetDB()
+		if err := db.Find(&tunnelClients).Error; err == nil && len(tunnelClients) > 0 {
+			res := make([]model.Client, 0, len(tunnelClients))
+			for _, tc := range tunnelClients {
+				res = append(res, model.Client{
+					Email:  tc.Email,
+					Enable: tc.Enable,
+					TgID:   tc.TgId,
+					ID:     tc.UUID,
+				})
+			}
+			return res, true
+		}
+	}
+
+	return nil, isAwg
+}
+
 // getInboundClientsFor lists clients of an inbound with a specific action prefix to be appended with email
 func (t *Tgbot) getInboundClientsFor(inboundID int, action string) (*telego.InlineKeyboardMarkup, error) {
 	inbound, err := t.inboundService.GetInbound(inboundID)
@@ -3290,23 +3516,7 @@ func (t *Tgbot) getInboundClientsFor(inboundID int, action string) (*telego.Inli
 		logger.Warning("getInboundClientsFor run failed:", err)
 		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
 	}
-	clients, _ := t.inboundService.GetClients(inbound)
-	isAwg := (inbound.Protocol == model.Tunnel || inbound.Protocol == model.WireGuard || inbound.Tag == "tunnel" || inbound.Protocol == "tunnel" || inbound.Protocol == "wireguard")
-	if len(clients) == 0 && isAwg {
-		awgClients, awgErr := t.awgService.GetClients()
-		if awgErr == nil && len(awgClients) > 0 {
-			clients = make([]model.Client, 0, len(awgClients))
-			for _, ac := range awgClients {
-				clients = append(clients, model.Client{
-					Email:  ac.Email,
-					Enable: ac.Enable,
-					TgID:   ac.TgId,
-					ID:     ac.UUID,
-				})
-			}
-		}
-	}
-
+	clients, isAwg := t.getClientsForInbound(inbound)
 	if len(clients) == 0 {
 		return nil, errors.New(t.I18nBot("tgbot.answers.getClientsFailed"))
 	}
@@ -3314,7 +3524,7 @@ func (t *Tgbot) getInboundClientsFor(inboundID int, action string) (*telego.Inli
 	var buttons []telego.InlineKeyboardButton
 	for _, client := range clients {
 		callbackPayload := action + " " + client.Email
-		if isAwg {
+		if isAwg && !strings.Contains(action, "inbound_client_") {
 			callbackPayload = action + " awg:" + client.Email
 		}
 		buttons = append(buttons, tu.InlineKeyboardButton(client.Email).WithCallbackData(t.encodeQuery(callbackPayload)))
@@ -3378,23 +3588,7 @@ func (t *Tgbot) getInboundClients(id int) (*telego.InlineKeyboardMarkup, error) 
 		logger.Warning("getIboundClients run failed:", err)
 		return nil, errors.New(t.I18nBot("tgbot.answers.getInboundsFailed"))
 	}
-	clients, _ := t.inboundService.GetClients(inbound)
-	isAwg := (inbound.Protocol == model.Tunnel || inbound.Protocol == model.WireGuard || inbound.Tag == "tunnel" || inbound.Protocol == "tunnel" || inbound.Protocol == "wireguard")
-	if len(clients) == 0 && isAwg {
-		awgClients, awgErr := t.awgService.GetClients()
-		if awgErr == nil && len(awgClients) > 0 {
-			clients = make([]model.Client, 0, len(awgClients))
-			for _, ac := range awgClients {
-				clients = append(clients, model.Client{
-					Email:  ac.Email,
-					Enable: ac.Enable,
-					TgID:   ac.TgId,
-					ID:     ac.UUID,
-				})
-			}
-		}
-	}
-
+	clients, isAwg := t.getClientsForInbound(inbound)
 	if len(clients) == 0 {
 		return nil, errors.New(t.I18nBot("tgbot.answers.getClientsFailed"))
 	}
