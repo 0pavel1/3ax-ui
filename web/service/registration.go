@@ -100,6 +100,14 @@ func RegisterUserInbounds(reg *model.PendingRegistration, excludeIds []int, inbo
 				continue
 			}
 
+			proto := strings.ToLower(string(inbound.Protocol))
+			remark := strings.ToLower(inbound.Remark)
+			if proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" || proto == "mixed" || proto == "http" ||
+				strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
+				strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard") {
+				continue // Tunnels and HTTP proxies are managed separately, not as Xray inbound clients
+			}
+
 			email := fmt.Sprintf("%s_%d", reg.Slug, inbound.Id)
 			clientJSON, err := buildClientJSONForInbound(inbound, email, reg.TgID, subId)
 			if err != nil {
@@ -126,7 +134,7 @@ func RegisterUserInbounds(reg *model.PendingRegistration, excludeIds []int, inbo
 	// 2. Provision AWG (AmneziaWG)
 	if awgService != nil {
 		awgServer, err := awgService.GetServer()
-		if err == nil && awgServer != nil {
+		if err == nil && awgServer != nil && awgServer.Enable {
 			// Find next AWG index for this user
 			existingClients, _ := awgService.GetClients()
 			prefix := reg.Slug + "_awg_"
@@ -188,7 +196,11 @@ func buildClientJSONForInbound(inbound *model.Inbound, email string, tgId int64,
 		if inbound.StreamSettings != "" {
 			var stream map[string]any
 			if json.Unmarshal([]byte(inbound.StreamSettings), &stream) == nil {
-				if sec, ok := stream["security"].(string); ok && (sec == "reality" || sec == "tls") {
+				net, _ := stream["network"].(string)
+				sec, _ := stream["security"].(string)
+				// xtls-rprx-vision is only valid for direct TCP transport (reality / tls).
+				// For xhttp, ws, grpc, httpupgrade etc., flow must be empty.
+				if net == "tcp" && (sec == "reality" || sec == "tls") {
 					flow = "xtls-rprx-vision"
 				}
 			}
