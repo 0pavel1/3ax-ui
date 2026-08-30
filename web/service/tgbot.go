@@ -93,9 +93,56 @@ var (
 )
 
 var (
+	botStateMu    sync.RWMutex
 	userStates    = make(map[int64]string)
 	regFirstNames = make(map[int64]string)
+	stateUpdated  = make(map[int64]time.Time)
 )
+
+func getUserState(tgId int64) string {
+	botStateMu.RLock()
+	defer botStateMu.RUnlock()
+	if t, ok := stateUpdated[tgId]; ok && time.Since(t) > 15*time.Minute {
+		return ""
+	}
+	return userStates[tgId]
+}
+
+func setUserState(tgId int64, state string) {
+	botStateMu.Lock()
+	defer botStateMu.Unlock()
+	userStates[tgId] = state
+	stateUpdated[tgId] = time.Now()
+}
+
+func clearUserState(tgId int64) {
+	botStateMu.Lock()
+	defer botStateMu.Unlock()
+	delete(userStates, tgId)
+	delete(regFirstNames, tgId)
+	delete(stateUpdated, tgId)
+}
+
+func getRegFirstName(tgId int64) string {
+	botStateMu.RLock()
+	defer botStateMu.RUnlock()
+	return regFirstNames[tgId]
+}
+
+func setRegFirstName(tgId int64, firstName string) {
+	botStateMu.Lock()
+	defer botStateMu.Unlock()
+	regFirstNames[tgId] = firstName
+	stateUpdated[tgId] = time.Now()
+}
+
+func cleanAwgEmail(email string) (cleanEmail string, isAwg bool) {
+	cleanEmail = strings.TrimPrefix(email, "⚡ ")
+	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
+	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
+	isAwg = strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+	return cleanEmail, isAwg
+}
 
 // LoginStatus represents the result of a login attempt.
 type LoginStatus byte
@@ -470,7 +517,7 @@ func (t *Tgbot) OnReceive() {
 		tgBotMutex.Unlock()
 
 		h.HandleMessage(func(ctx *th.Context, message telego.Message) error {
-			delete(userStates, message.Chat.ID)
+			clearUserState(message.Chat.ID)
 			t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.keyboardClosed"), tu.ReplyKeyboardRemove())
 			return nil
 		}, th.TextEqual(t.I18nBot("tgbot.buttons.closeKeyboard")))
@@ -481,7 +528,7 @@ func (t *Tgbot) OnReceive() {
 				messageWorkerPool <- struct{}{}        // Acquire worker
 				defer func() { <-messageWorkerPool }() // Release worker
 
-				delete(userStates, message.Chat.ID)
+				clearUserState(message.Chat.ID)
 				t.answerCommand(&message, message.Chat.ID, checkAdmin(message.From.ID))
 			}()
 			return nil
@@ -493,14 +540,14 @@ func (t *Tgbot) OnReceive() {
 				messageWorkerPool <- struct{}{}        // Acquire worker
 				defer func() { <-messageWorkerPool }() // Release worker
 
-				delete(userStates, query.Message.GetChat().ID)
+				clearUserState(query.Message.GetChat().ID)
 				t.answerCallback(&query, checkAdmin(query.From.ID))
 			}()
 			return nil
 		}, th.AnyCallbackQueryWithMessage())
 
 		h.HandleMessage(func(ctx *th.Context, message telego.Message) error {
-			if userState, exists := userStates[message.Chat.ID]; exists {
+			if userState := getUserState(message.Chat.ID); userState != "" {
 				switch userState {
 				case "awaiting_reg_firstname":
 					text := strings.TrimSpace(message.Text)
@@ -508,8 +555,8 @@ func (t *Tgbot) OnReceive() {
 						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.registration.onlyCyrillicFirstname"))
 						return nil
 					}
-					regFirstNames[message.Chat.ID] = text
-					userStates[message.Chat.ID] = "awaiting_reg_lastname"
+					setRegFirstName(message.Chat.ID, text)
+					setUserState(message.Chat.ID, "awaiting_reg_lastname")
 					t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.registration.askLastname"))
 					return nil
 
@@ -519,9 +566,8 @@ func (t *Tgbot) OnReceive() {
 						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.registration.onlyCyrillicLastname"))
 						return nil
 					}
-					firstName := regFirstNames[message.Chat.ID]
-					delete(regFirstNames, message.Chat.ID)
-					delete(userStates, message.Chat.ID)
+					firstName := getRegFirstName(message.Chat.ID)
+					clearUserState(message.Chat.ID)
 
 					lastName := text
 					slug := ToUserSlug(firstName, lastName)
@@ -568,7 +614,7 @@ func (t *Tgbot) OnReceive() {
 				case "awaiting_id":
 					if client_Id == strings.TrimSpace(message.Text) {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.using_default_value"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						inbound, _ := t.inboundService.GetInbound(receiver_inbound_ID)
 						message_text, _ := t.BuildInboundClientDataMessage(inbound.Remark, inbound.Protocol)
 						t.addClient(message.Chat.ID, message_text)
@@ -577,7 +623,7 @@ func (t *Tgbot) OnReceive() {
 
 					client_Id = strings.TrimSpace(message.Text)
 					if t.isSingleWord(client_Id) {
-						userStates[message.Chat.ID] = "awaiting_id"
+						setUserState(message.Chat.ID, "awaiting_id")
 
 						cancel_btn_markup := tu.InlineKeyboard(
 							tu.InlineKeyboardRow(
@@ -588,7 +634,7 @@ func (t *Tgbot) OnReceive() {
 						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.messages.incorrect_input"), cancel_btn_markup)
 					} else {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.received_id"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						inbound, _ := t.inboundService.GetInbound(receiver_inbound_ID)
 						message_text, _ := t.BuildInboundClientDataMessage(inbound.Remark, inbound.Protocol)
 						t.addClient(message.Chat.ID, message_text)
@@ -596,13 +642,13 @@ func (t *Tgbot) OnReceive() {
 				case "awaiting_password_tr":
 					if client_TrPassword == strings.TrimSpace(message.Text) {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.using_default_value"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						return nil
 					}
 
 					client_TrPassword = strings.TrimSpace(message.Text)
 					if t.isSingleWord(client_TrPassword) {
-						userStates[message.Chat.ID] = "awaiting_password_tr"
+						setUserState(message.Chat.ID, "awaiting_password_tr")
 
 						cancel_btn_markup := tu.InlineKeyboard(
 							tu.InlineKeyboardRow(
@@ -613,7 +659,7 @@ func (t *Tgbot) OnReceive() {
 						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.messages.incorrect_input"), cancel_btn_markup)
 					} else {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.received_password"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						inbound, _ := t.inboundService.GetInbound(receiver_inbound_ID)
 						message_text, _ := t.BuildInboundClientDataMessage(inbound.Remark, inbound.Protocol)
 						t.addClient(message.Chat.ID, message_text)
@@ -621,13 +667,13 @@ func (t *Tgbot) OnReceive() {
 				case "awaiting_password_sh":
 					if client_ShPassword == strings.TrimSpace(message.Text) {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.using_default_value"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						return nil
 					}
 
 					client_ShPassword = strings.TrimSpace(message.Text)
 					if t.isSingleWord(client_ShPassword) {
-						userStates[message.Chat.ID] = "awaiting_password_sh"
+						setUserState(message.Chat.ID, "awaiting_password_sh")
 
 						cancel_btn_markup := tu.InlineKeyboard(
 							tu.InlineKeyboardRow(
@@ -638,7 +684,7 @@ func (t *Tgbot) OnReceive() {
 						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.messages.incorrect_input"), cancel_btn_markup)
 					} else {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.received_password"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						inbound, _ := t.inboundService.GetInbound(receiver_inbound_ID)
 						message_text, _ := t.BuildInboundClientDataMessage(inbound.Remark, inbound.Protocol)
 						t.addClient(message.Chat.ID, message_text)
@@ -646,13 +692,13 @@ func (t *Tgbot) OnReceive() {
 				case "awaiting_email":
 					if client_Email == strings.TrimSpace(message.Text) {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.using_default_value"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						return nil
 					}
 
 					client_Email = strings.TrimSpace(message.Text)
 					if t.isSingleWord(client_Email) {
-						userStates[message.Chat.ID] = "awaiting_email"
+						setUserState(message.Chat.ID, "awaiting_email")
 
 						cancel_btn_markup := tu.InlineKeyboard(
 							tu.InlineKeyboardRow(
@@ -663,7 +709,7 @@ func (t *Tgbot) OnReceive() {
 						t.SendMsgToTgbot(message.Chat.ID, t.I18nBot("tgbot.messages.incorrect_input"), cancel_btn_markup)
 					} else {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.received_email"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						inbound, _ := t.inboundService.GetInbound(receiver_inbound_ID)
 						message_text, _ := t.BuildInboundClientDataMessage(inbound.Remark, inbound.Protocol)
 						t.addClient(message.Chat.ID, message_text)
@@ -671,13 +717,13 @@ func (t *Tgbot) OnReceive() {
 				case "awaiting_comment":
 					if client_Comment == strings.TrimSpace(message.Text) {
 						t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.using_default_value"), 3, tu.ReplyKeyboardRemove())
-						delete(userStates, message.Chat.ID)
+						clearUserState(message.Chat.ID)
 						return nil
 					}
 
 					client_Comment = strings.TrimSpace(message.Text)
 					t.SendMsgToTgbotDeleteAfter(message.Chat.ID, t.I18nBot("tgbot.messages.received_comment"), 3, tu.ReplyKeyboardRemove())
-					delete(userStates, message.Chat.ID)
+					clearUserState(message.Chat.ID)
 					inbound, _ := t.inboundService.GetInbound(receiver_inbound_ID)
 					message_text, _ := t.BuildInboundClientDataMessage(inbound.Remark, inbound.Protocol)
 					t.addClient(message.Chat.ID, message_text)
@@ -2676,9 +2722,9 @@ func (t *Tgbot) fetchSubscriptionLines(subURL string, subId string) ([]string, e
 		reqExt, err := http.NewRequest("GET", subURL, nil)
 		if err == nil {
 			reqExt.Header.Set("Accept", "text/plain, */*;q=0.1")
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			reqExt = reqExt.WithContext(ctx)
+			ctxExt, cancelExt := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancelExt()
+			reqExt = reqExt.WithContext(ctxExt)
 
 			if resp, err := optimizedHTTPClient.Do(reqExt); err == nil {
 				defer resp.Body.Close()
@@ -2720,10 +2766,7 @@ func (t *Tgbot) fetchSubscriptionLines(subURL string, subId string) ([]string, e
 
 // sendClientSubLinks sends the subscription links for the client to the chat.
 func (t *Tgbot) sendClientSubLinks(chatId int64, email string) {
-	cleanEmail := strings.TrimPrefix(email, "⚡ ")
-	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
-	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
-	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+	cleanEmail, isAwgRequest := cleanAwgEmail(email)
 
 	if isAwgRequest {
 		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
@@ -2769,10 +2812,7 @@ func (t *Tgbot) sendClientSubLinks(chatId int64, email string) {
 
 // sendClientIndividualLinks fetches the subscription content (individual links) and sends it to the user
 func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
-	cleanEmail := strings.TrimPrefix(email, "⚡ ")
-	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
-	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
-	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+	cleanEmail, isAwgRequest := cleanAwgEmail(email)
 
 	if isAwgRequest {
 		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
@@ -2823,10 +2863,7 @@ func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
 
 // sendClientQRLinks generates QR images for subscription URL, JSON URL, and individual links, then sends them
 func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
-	cleanEmail := strings.TrimPrefix(email, "⚡ ")
-	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
-	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
-	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+	cleanEmail, isAwgRequest := cleanAwgEmail(email)
 
 	if isAwgRequest {
 		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
@@ -2908,23 +2945,10 @@ func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
 
 // sendSingleInboundClientLink sends only the individual connection link for a specific inbound.
 func (t *Tgbot) sendSingleInboundClientLink(chatId int64, inboundID int, email string) {
-	cleanEmail := strings.TrimPrefix(email, "⚡ ")
-	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
-	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
-	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+	cleanEmail, isAwgRequest := cleanAwgEmail(email)
 
 	inbound, _ := t.inboundService.GetInbound(inboundID)
-	proto := ""
-	remark := ""
-	if inbound != nil {
-		proto = strings.ToLower(string(inbound.Protocol))
-		remark = strings.ToLower(inbound.Remark)
-	}
-	isAwgInbound := isAwgRequest || proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" ||
-		strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
-		strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard")
-
-	if isAwgInbound {
+	if isAwgRequest || IsAwgInbound(inbound) {
 		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
 			t.sendAwgClientConfig(chatId, awgClient)
 			return
@@ -2982,23 +3006,10 @@ func (t *Tgbot) sendSingleInboundClientLink(chatId int64, inboundID int, email s
 
 // sendSingleInboundClientQR sends only the QR code for a specific inbound.
 func (t *Tgbot) sendSingleInboundClientQR(chatId int64, inboundID int, email string) {
-	cleanEmail := strings.TrimPrefix(email, "⚡ ")
-	cleanEmail = strings.TrimSuffix(cleanEmail, " (AWG)")
-	cleanEmail = strings.TrimPrefix(cleanEmail, "awg:")
-	isAwgRequest := strings.Contains(email, "(AWG)") || strings.HasPrefix(email, "awg:") || strings.HasPrefix(email, "⚡ ")
+	cleanEmail, isAwgRequest := cleanAwgEmail(email)
 
 	inbound, _ := t.inboundService.GetInbound(inboundID)
-	proto := ""
-	remark := ""
-	if inbound != nil {
-		proto = strings.ToLower(string(inbound.Protocol))
-		remark = strings.ToLower(inbound.Remark)
-	}
-	isAwgInbound := isAwgRequest || proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" ||
-		strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
-		strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard")
-
-	if isAwgInbound {
+	if isAwgRequest || IsAwgInbound(inbound) {
 		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
 			t.sendAwgClientQR(chatId, awgClient)
 			return
@@ -3478,35 +3489,30 @@ func (t *Tgbot) getClientsForInbound(inbound *model.Inbound) ([]model.Client, bo
 	if inbound == nil {
 		return nil, false
 	}
+
+	if IsAwgInbound(inbound) {
+		awgClients, err := t.awgService.GetClients()
+		if err == nil && len(awgClients) > 0 {
+			res := make([]model.Client, 0, len(awgClients))
+			for _, ac := range awgClients {
+				res = append(res, model.Client{
+					Email:  ac.Email,
+					Enable: ac.Enable,
+					TgID:   ac.TgId,
+					ID:     ac.UUID,
+				})
+			}
+			return res, true
+		}
+		return nil, true
+	}
+
 	clients, _ := t.inboundService.GetClients(inbound)
 	if len(clients) > 0 {
 		return clients, false
 	}
 
-	proto := strings.ToLower(string(inbound.Protocol))
-	remark := strings.ToLower(inbound.Remark)
-	isAwg := proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" ||
-		strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
-		strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard")
-
-	if isAwg || len(clients) == 0 {
-		var tunnelClients []model.TunnelClient
-		db := database.GetDB()
-		if err := db.Find(&tunnelClients).Error; err == nil && len(tunnelClients) > 0 {
-			res := make([]model.Client, 0, len(tunnelClients))
-			for _, tc := range tunnelClients {
-				res = append(res, model.Client{
-					Email:  tc.Email,
-					Enable: tc.Enable,
-					TgID:   tc.TgId,
-					ID:     tc.UUID,
-				})
-			}
-			return res, true
-		}
-	}
-
-	return nil, isAwg
+	return nil, false
 }
 
 // getInboundClientsFor lists clients of an inbound with a specific action prefix to be appended with email
@@ -3885,7 +3891,7 @@ func (t *Tgbot) clientTelegramUserInfo(chatId int64, email string, messageID ...
 
 // searchClient searches for a client by email and sends the information.
 func (t *Tgbot) searchClient(chatId int64, email string, messageID ...int) {
-	cleanEmail := strings.TrimPrefix(email, "awg:")
+	cleanEmail, _ := cleanAwgEmail(email)
 	traffic, err := t.inboundService.GetClientTrafficByEmail(cleanEmail)
 	if err != nil || traffic == nil {
 		if awgClient, awgErr := t.getAwgClientByEmail(cleanEmail); awgErr == nil && awgClient != nil {

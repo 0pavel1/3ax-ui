@@ -377,7 +377,7 @@ func (s *SettingService) SetTgBotExcludeInbounds(inbounds string) error {
 func (s *SettingService) GetTgBotExcludeInboundIds() ([]int, error) {
 	str, err := s.GetTgBotExcludeInbounds()
 	if err != nil || strings.TrimSpace(str) == "" {
-		return []int{5}, nil
+		return []int{}, nil
 	}
 	parts := strings.Split(str, ",")
 	var ids []int

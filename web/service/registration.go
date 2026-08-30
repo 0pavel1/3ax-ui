@@ -78,6 +78,18 @@ func UpdateRegistrationStatus(tgId int64, status model.RegistrationStatus) error
 	}).Error
 }
 
+// IsAwgInbound reports whether an inbound is a WireGuard/AmneziaWG tunnel or proxy.
+func IsAwgInbound(inbound *model.Inbound) bool {
+	if inbound == nil {
+		return false
+	}
+	proto := strings.ToLower(string(inbound.Protocol))
+	remark := strings.ToLower(inbound.Remark)
+	return proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" || proto == "mixed" || proto == "http" ||
+		strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
+		strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard")
+}
+
 // RegisterUserInbounds provisions a user across all active Xray inbounds (except excluded) and AWG.
 func RegisterUserInbounds(reg *model.PendingRegistration, excludeIds []int, inboundService *InboundService, awgService *AwgService) (int, error) {
 	if reg == nil || reg.Slug == "" {
@@ -96,16 +108,8 @@ func RegisterUserInbounds(reg *model.PendingRegistration, excludeIds []int, inbo
 	inbounds, err := inboundService.GetAllInbounds()
 	if err == nil {
 		for _, inbound := range inbounds {
-			if !inbound.Enable || excludeMap[inbound.Id] {
+			if !inbound.Enable || excludeMap[inbound.Id] || IsAwgInbound(inbound) {
 				continue
-			}
-
-			proto := strings.ToLower(string(inbound.Protocol))
-			remark := strings.ToLower(inbound.Remark)
-			if proto == "tunnel" || proto == "wireguard" || proto == "amneziawg" || proto == "nativewg" || proto == "mixed" || proto == "http" ||
-				strings.Contains(proto, "awg") || strings.Contains(proto, "wg") ||
-				strings.Contains(remark, "awg") || strings.Contains(remark, "amnezia") || strings.Contains(remark, "wireguard") {
-				continue // Tunnels and HTTP proxies are managed separately, not as Xray inbound clients
 			}
 
 			email := fmt.Sprintf("%s_%d", reg.Slug, inbound.Id)
