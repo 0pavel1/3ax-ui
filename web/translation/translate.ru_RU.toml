@@ -565,8 +565,9 @@
 "information" = "Информация"
 "language" = "Язык интерфейса"
 "telegramBotLanguage" = "Язык Telegram-бота"
-"telegramBotExcludeInbounds" = "Исключённые ID инбаундов для бота"
-"telegramBotExcludeInboundsDesc" = "ID инбаундов через запятую (например, 5), которые не будут создаваться для новых пользователей бота"
+"telegramBotExcludeInbounds" = "Исключённые подключения для бота"
+"telegramBotExcludeInboundsDesc" = "Выберите подключения, которые не будут создаваться при регистрации новых пользователей через бота"
+"telegramBotExcludeInboundsPlaceholder" = "Выберите подключения для исключения"
 
 [pages.xray]
 "title" = "Настройки Xray"

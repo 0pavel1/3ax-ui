@@ -38,7 +38,14 @@
             <template #title>{{ i18n "pages.settings.telegramBotExcludeInbounds"}}</template>
             <template #description>{{ i18n "pages.settings.telegramBotExcludeInboundsDesc"}}</template>
             <template #control>
-                <a-input type="text" placeholder="e.g. 5, 6" v-model="allSetting.tgBotExcludeInbounds"></a-input>
+                <a-select mode="multiple" :dropdown-class-name="themeSwitcher.currentTheme" :style="{ width: '100%' }"
+                    placeholder='{{ i18n "pages.settings.telegramBotExcludeInboundsPlaceholder" }}'
+                    v-model="tgBotExcludeInboundList">
+                    <a-select-option v-for="opt in inboundIdOptions" :key="opt.value" :value="opt.value">
+                        [[ opt.label ]]
+                    </a-select-option>
+                </a-select>
+                <div v-if="inboundIdOptions.length==0" style="margin-top:6px;color:#999">No inbounds found.</div>
             </template>
         </a-setting-list-item>
     </a-collapse-panel>

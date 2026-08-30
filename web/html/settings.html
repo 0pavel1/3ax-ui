@@ -125,6 +125,7 @@
       user: {},
       lang: LanguageManager.getLanguage(),
       inboundOptions: [],
+      inboundIdOptions: [],
       remarkModels: {
         i: 'Inbound',
         e: 'Email',
@@ -321,8 +322,13 @@
             label: `${ib.tag} (${ib.protocol}@${ib.port})`,
             value: ib.tag,
           }));
+          this.inboundIdOptions = msg.obj.map(ib => ({
+            label: `${ib.remark || ib.tag} (ID: ${ib.id}, ${ib.protocol}@${ib.port})`,
+            value: String(ib.id),
+          }));
         } else {
           this.inboundOptions = [];
+          this.inboundIdOptions = [];
         }
       },
       async updateAllSetting() {
@@ -501,6 +507,15 @@
       },
     },
     computed: {
+      tgBotExcludeInboundList: {
+        get: function() {
+          const csv = this.allSetting.tgBotExcludeInbounds || "";
+          return csv.length ? csv.split(',').map(s => s.trim()).filter(Boolean) : [];
+        },
+        set: function(list) {
+          this.allSetting.tgBotExcludeInbounds = Array.isArray(list) ? list.join(',') : '';
+        }
+      },
       ldapInboundTagList: {
         get: function() {
           const csv = this.allSetting.ldapInboundTags || "";
