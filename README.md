@@ -13,7 +13,10 @@
 [![Downloads](https://img.shields.io/github/downloads/0pavel1/3ax-ui/total.svg)](https://github.com/0pavel1/3ax-ui/releases/latest)
 [![License](https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true)](https://www.gnu.org/licenses/gpl-3.0.en.html)
 
-**3AX-UI** is a fork of [3x-ui](https://github.com/MHSanaei/3x-ui) with built-in censorship-circumvention protocols the original lacks: **AmneziaWG** (through 3.1), **native WireGuard** with native IPv6, and **MTProto** (a Telegram proxy).
+**3AX-UI** is an enhanced fork of [3x-ui](https://github.com/MHSanaei/3x-ui) focused on anti-censorship protocols, bug fixes, and seamless Telegram bot administration. It resolves key UX inconveniences and bugs from the upstream panel to provide an effortless, production-ready VPN service:
+- **Telegram Bot User Onboarding & Administration:** complete self-service registration flow (`/start`) with strict Cyrillic name verification, 1-click admin approval, and automated client generation across all inbounds and AmneziaWG.
+- **Anti-Censorship Protocols:** built-in support for **AmneziaWG** (through 3.1), **native WireGuard** with native IPv6, and **MTProto** (Telegram proxy).
+- **Bug Fixes & Usability:** direct `.conf` and QR code delivery for AWG in the bot, combined traffic usage reports, protocol fixes (e.g. Hysteria client deletion), and interactive user instruction guides (`📖 Instructions`).
 
 > The **A** in the name stands for **Amnezia** — the protocol this fork started with and still its key difference from the original.
 
