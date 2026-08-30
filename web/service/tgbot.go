@@ -1865,25 +1865,37 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 		t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("tgbot.buttons.instruction"))
 		t.sendInstruction(chatId)
 	case "client_sub_links":
-		// show user's own clients to choose one for sub links
 		tgUserID := callbackQuery.From.ID
 		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.askToAddUserId", "TgUserID=="+strconv.FormatInt(tgUserID, 10)))
 			return
 		}
-		var buttons []telego.InlineKeyboardButton
+		var xrayTraffics []*xray.ClientTraffic
+		var awgTraffics []*xray.ClientTraffic
 		for _, tr := range traffics {
-			buttons = append(buttons, tu.InlineKeyboardButton(tr.Email).WithCallbackData(t.encodeQuery("client_sub_links "+tr.Email)))
+			if strings.HasPrefix(tr.Email, "⚡ ") || strings.Contains(tr.Email, "(AWG)") {
+				awgTraffics = append(awgTraffics, tr)
+			} else {
+				xrayTraffics = append(xrayTraffics, tr)
+			}
 		}
-		cols := 1
-		if len(buttons) >= 6 {
-			cols = 2
+
+		if len(awgTraffics) == 0 && len(xrayTraffics) > 0 {
+			t.sendClientSubLinks(chatId, xrayTraffics[0].Email)
+			return
 		}
-		keyboard := tu.InlineKeyboardGrid(tu.InlineKeyboardCols(cols, buttons...))
+
+		var buttons []telego.InlineKeyboardButton
+		if len(xrayTraffics) > 0 {
+			buttons = append(buttons, tu.InlineKeyboardButton("🌐 Общая подписка (все узлы)").WithCallbackData(t.encodeQuery("client_sub_links "+xrayTraffics[0].Email)))
+		}
+		for _, tr := range awgTraffics {
+			buttons = append(buttons, tu.InlineKeyboardButton("⚡ AmneziaWG (Конфиг)").WithCallbackData(t.encodeQuery("client_sub_links "+tr.Email)))
+		}
+		keyboard := tu.InlineKeyboardGrid(tu.InlineKeyboardCols(1, buttons...))
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.commands.pleaseChoose"), keyboard)
 	case "client_individual_links":
-		// show user's clients to choose for individual links
 		tgUserID := callbackQuery.From.ID
 		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
@@ -1892,7 +1904,8 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 		}
 		var buttons2 []telego.InlineKeyboardButton
 		for _, tr := range traffics {
-			buttons2 = append(buttons2, tu.InlineKeyboardButton(tr.Email).WithCallbackData(t.encodeQuery("client_individual_links "+tr.Email)))
+			label := t.getClientTrafficButtonLabel(tr)
+			buttons2 = append(buttons2, tu.InlineKeyboardButton(label).WithCallbackData(t.encodeQuery("client_individual_links "+tr.Email)))
 		}
 		cols2 := 1
 		if len(buttons2) >= 6 {
@@ -1901,7 +1914,6 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 		keyboard2 := tu.InlineKeyboardGrid(tu.InlineKeyboardCols(cols2, buttons2...))
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.commands.pleaseChoose"), keyboard2)
 	case "client_qr_links":
-		// show user's clients to choose for QR codes
 		tgUserID := callbackQuery.From.ID
 		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
@@ -1909,8 +1921,18 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 			return
 		}
 		var buttons3 []telego.InlineKeyboardButton
+		var xrayTraffics []*xray.ClientTraffic
 		for _, tr := range traffics {
-			buttons3 = append(buttons3, tu.InlineKeyboardButton(tr.Email).WithCallbackData(t.encodeQuery("client_qr_links "+tr.Email)))
+			if !strings.HasPrefix(tr.Email, "⚡ ") && !strings.Contains(tr.Email, "(AWG)") {
+				xrayTraffics = append(xrayTraffics, tr)
+			}
+		}
+		if len(xrayTraffics) > 0 {
+			buttons3 = append(buttons3, tu.InlineKeyboardButton("🔗 QR-код общей подписки").WithCallbackData(t.encodeQuery("client_qr_links sub_"+xrayTraffics[0].Email)))
+		}
+		for _, tr := range traffics {
+			label := t.getClientTrafficButtonLabel(tr)
+			buttons3 = append(buttons3, tu.InlineKeyboardButton(label).WithCallbackData(t.encodeQuery("client_qr_links "+tr.Email)))
 		}
 		cols3 := 1
 		if len(buttons3) >= 6 {
@@ -2812,7 +2834,8 @@ func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
 
 // sendClientQRLinks generates QR images for subscription URL, JSON URL, and individual links, then sends them
 func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
-	cleanEmail, isAwgRequest := cleanAwgEmail(email)
+	isSubExplicit := strings.HasPrefix(email, "sub_")
+	cleanEmail, isAwgRequest := cleanAwgEmail(strings.TrimPrefix(email, "sub_"))
 
 	if isAwgRequest {
 		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
@@ -2822,8 +2845,13 @@ func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
 	}
 
 	// First check if it's an Xray client
-	_, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
+	traffic, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
 	if client != nil {
+		var inbound *model.Inbound
+		if traffic != nil && traffic.InboundId > 0 {
+			inbound, _ = t.inboundService.GetInbound(traffic.InboundId)
+		}
+
 		subURL, subJsonURL, err := t.buildSubscriptionURLs(cleanEmail)
 		if err != nil {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
@@ -2837,53 +2865,80 @@ func (t *Tgbot) sendClientQRLinks(chatId int64, email string) {
 			return qrcode.Encode(content, qrcode.Medium, size)
 		}
 
-		t.SendMsgToTgbot(chatId, "QRCode"+":")
-
-		// Send sub URL QR (filename: sub.png)
-		if png, err := createQR(subURL, 320); err == nil {
-			document := tu.Document(
-				tu.ID(chatId),
-				tu.FileFromBytes(png, "sub.png"),
-			)
-			_, _ = bot.SendDocument(context.Background(), document)
-		} else {
-			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
-		}
-
-		// Send JSON URL QR (filename: subjson.png) when available
-		if subJsonURL != "" {
-			if png, err := createQR(subJsonURL, 320); err == nil {
+		// If user explicitly asked for general subscription QR:
+		if isSubExplicit {
+			t.SendMsgToTgbot(chatId, "QR-код ссылки на подписку:")
+			if png, err := createQR(subURL, 320); err == nil {
 				document := tu.Document(
 					tu.ID(chatId),
-					tu.FileFromBytes(png, "subjson.png"),
-				)
+					tu.FileFromBytes(png, "Subscription_QR.png"),
+				).WithCaption("🔗 QR-код ссылки на подписку (все узлы)")
 				_, _ = bot.SendDocument(context.Background(), document)
-			} else {
-				t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation")+"\r\n"+err.Error())
+			}
+			if subJsonURL != "" {
+				if png, err := createQR(subJsonURL, 320); err == nil {
+					document := tu.Document(
+						tu.ID(chatId),
+						tu.FileFromBytes(png, "Subscription_JSON_QR.png"),
+					).WithCaption("🔗 QR-код JSON-подписки")
+					_, _ = bot.SendDocument(context.Background(), document)
+				}
+			}
+			return
+		}
+
+		// Otherwise user clicked a specific connection button:
+		cleaned, err := t.fetchSubscriptionLines(subURL, client.SubID)
+		if err != nil || len(cleaned) == 0 {
+			if png, err := createQR(subURL, 320); err == nil {
+				document := tu.Document(
+					tu.ID(chatId),
+					tu.FileFromBytes(png, "Subscription_QR.png"),
+				).WithCaption("🔗 QR-код ссылки на подписку (все узлы)")
+				_, _ = bot.SendDocument(context.Background(), document)
+			}
+			return
+		}
+
+		var matchedLinks []string
+		if inbound != nil {
+			inboundRemarkLower := strings.ToLower(inbound.Remark)
+			portStr := fmt.Sprintf(":%d", inbound.Port)
+			for _, link := range cleaned {
+				unescaped, _ := url.PathUnescape(link)
+				unescapedLower := strings.ToLower(unescaped)
+				if (inbound.Remark != "" && strings.Contains(unescapedLower, inboundRemarkLower)) || strings.Contains(link, portStr) {
+					matchedLinks = append(matchedLinks, link)
+				}
 			}
 		}
 
-		// Also generate individual links' QRs (first up to 5)
-		if cleaned, err := t.fetchSubscriptionLines(subURL, client.SubID); err == nil && len(cleaned) > 0 {
-			max := min(len(cleaned), 5)
-			for i := range max {
-				if png, err := createQR(cleaned[i], 320); err == nil {
-					filename := fmt.Sprintf("%s_%d.png", cleanEmail, i+1)
-					document := tu.Document(
-						tu.ID(chatId),
-						tu.FileFromBytes(png, filename),
-					)
-					_, _ = bot.SendDocument(context.Background(), document)
-					if i < max-1 {
-						time.Sleep(50 * time.Millisecond)
-					}
+		if len(matchedLinks) == 0 {
+			matchedLinks = cleaned
+		}
+
+		for i, link := range matchedLinks {
+			caption := fmt.Sprintf("🌐 %s", cleanEmail)
+			filename := fmt.Sprintf("%s.png", cleanEmail)
+			if inbound != nil && inbound.Remark != "" {
+				caption = fmt.Sprintf("🌐 %s (%s)", inbound.Remark, strings.ToUpper(string(inbound.Protocol)))
+				filename = fmt.Sprintf("%s_%s.png", strings.ReplaceAll(inbound.Remark, " ", "_"), inbound.Protocol)
+			}
+			if png, err := createQR(link, 320); err == nil {
+				document := tu.Document(
+					tu.ID(chatId),
+					tu.FileFromBytes(png, filename),
+				).WithCaption(caption)
+				_, _ = bot.SendDocument(context.Background(), document)
+				if i < len(matchedLinks)-1 {
+					time.Sleep(100 * time.Millisecond)
 				}
 			}
 		}
 		return
 	}
 
-	// If no Xray client, check if it's an AWG client
+	// Fallback to AWG
 	if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
 		t.sendAwgClientQR(chatId, awgClient)
 		return
@@ -3004,17 +3059,21 @@ func (t *Tgbot) sendSingleInboundClientQR(chatId int64, inboundID int, email str
 			return qrcode.Encode(content, qrcode.Medium, size)
 		}
 
-		t.SendMsgToTgbot(chatId, "QRCode"+":")
 		for i, link := range matchedLinks {
+			caption := fmt.Sprintf("🌐 %s", cleanEmail)
+			filename := fmt.Sprintf("%s.png", cleanEmail)
+			if inbound != nil && inbound.Remark != "" {
+				caption = fmt.Sprintf("🌐 %s (%s)", inbound.Remark, strings.ToUpper(string(inbound.Protocol)))
+				filename = fmt.Sprintf("%s_%s.png", strings.ReplaceAll(inbound.Remark, " ", "_"), inbound.Protocol)
+			}
 			if png, err := createQR(link, 320); err == nil {
-				filename := fmt.Sprintf("%s_%d.png", cleanEmail, i+1)
 				document := tu.Document(
 					tu.ID(chatId),
 					tu.FileFromBytes(png, filename),
-				)
+				).WithCaption(caption)
 				_, _ = bot.SendDocument(context.Background(), document)
 				if i < len(matchedLinks)-1 {
-					time.Sleep(50 * time.Millisecond)
+					time.Sleep(100 * time.Millisecond)
 				}
 			}
 		}
@@ -3069,7 +3128,7 @@ func (t *Tgbot) sendAwgClientConfig(chatId int64, c *model.TunnelClient) {
 	filename := c.Email + ".conf"
 	msg := fmt.Sprintf("⚡ <b>AmneziaWG Config: %s</b>\n\n<code>%s</code>", html.EscapeString(c.Email), html.EscapeString(conf))
 	t.SendMsgToTgbot(chatId, msg)
-	doc := tu.Document(tu.ID(chatId), tu.FileFromBytes([]byte(conf), filename))
+	doc := tu.Document(tu.ID(chatId), tu.FileFromBytes([]byte(conf), filename)).WithCaption("⚡ AmneziaWG Config (.conf)")
 	_, _ = bot.SendDocument(context.Background(), doc)
 }
 
@@ -3081,11 +3140,29 @@ func (t *Tgbot) sendAwgClientQR(chatId int64, c *model.TunnelClient) {
 	}
 	filename := c.Email + "_awg.png"
 	if png, err := qrcode.Encode(conf, qrcode.Medium, 320); err == nil {
-		doc := tu.Document(tu.ID(chatId), tu.FileFromBytes(png, filename))
+		doc := tu.Document(tu.ID(chatId), tu.FileFromBytes(png, filename)).WithCaption("⚡ AmneziaWG (QR-код)")
 		_, _ = bot.SendDocument(context.Background(), doc)
 	} else {
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.errorOperation"))
 	}
+}
+
+func (t *Tgbot) getClientTrafficButtonLabel(tr *xray.ClientTraffic) string {
+	if strings.HasPrefix(tr.Email, "⚡ ") || strings.Contains(tr.Email, "(AWG)") {
+		return "⚡ AmneziaWG"
+	}
+	cleanEmail, _ := cleanAwgEmail(tr.Email)
+	if tr.InboundId > 0 {
+		if inbound, err := t.inboundService.GetInbound(tr.InboundId); err == nil && inbound != nil && inbound.Remark != "" {
+			return fmt.Sprintf("🌐 %s (%s)", inbound.Remark, strings.ToUpper(string(inbound.Protocol)))
+		}
+	}
+	if traffic, _, err := t.inboundService.GetClientByEmail(cleanEmail); err == nil && traffic != nil && traffic.InboundId > 0 {
+		if inbound, err := t.inboundService.GetInbound(traffic.InboundId); err == nil && inbound != nil && inbound.Remark != "" {
+			return fmt.Sprintf("🌐 %s (%s)", inbound.Remark, strings.ToUpper(string(inbound.Protocol)))
+		}
+	}
+	return tr.Email
 }
 
 func (t *Tgbot) sendInstruction(chatId int64) {
