@@ -997,6 +997,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 				return
 			case "inbound_client_individual":
 				if len(dataArray) >= 3 {
+					t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("subscription.individualLinks"))
 					inboundIdInt, _ := strconv.Atoi(dataArray[1])
 					email := strings.Join(dataArray[2:], " ")
 					t.sendSingleInboundClientLink(chatId, inboundIdInt, email)
@@ -1004,18 +1005,22 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 				}
 			case "inbound_client_qr":
 				if len(dataArray) >= 3 {
+					t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("qrCode"))
 					inboundIdInt, _ := strconv.Atoi(dataArray[1])
 					email := strings.Join(dataArray[2:], " ")
 					t.sendSingleInboundClientQR(chatId, inboundIdInt, email)
 					return
 				}
 			case "client_sub_links":
+				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("pages.settings.subSettings"))
 				t.sendClientSubLinks(chatId, email)
 				return
 			case "client_individual_links":
+				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("subscription.individualLinks"))
 				t.sendClientIndividualLinks(chatId, email)
 				return
 			case "client_qr_links":
+				t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("qrCode"))
 				t.sendClientQRLinks(chatId, email)
 				return
 			case "client_get_usage":
@@ -1866,6 +1871,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 		t.sendInstruction(chatId)
 	case "client_sub_links":
 		tgUserID := callbackQuery.From.ID
+		t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("pages.settings.subSettings"))
 		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.askToAddUserId", "TgUserID=="+strconv.FormatInt(tgUserID, 10)))
@@ -1897,6 +1903,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.commands.pleaseChoose"), keyboard)
 	case "client_individual_links":
 		tgUserID := callbackQuery.From.ID
+		t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("subscription.individualLinks"))
 		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.askToAddUserId", "TgUserID=="+strconv.FormatInt(tgUserID, 10)))
@@ -1915,6 +1922,7 @@ func (t *Tgbot) answerCallback(callbackQuery *telego.CallbackQuery, isAdmin bool
 		t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.commands.pleaseChoose"), keyboard2)
 	case "client_qr_links":
 		tgUserID := callbackQuery.From.ID
+		t.sendCallbackAnswerTgBot(callbackQuery.ID, t.I18nBot("qrCode"))
 		traffics := t.getAllClientTrafficsForTgUser(tgUserID)
 		if len(traffics) == 0 {
 			t.SendMsgToTgbot(chatId, t.I18nBot("tgbot.answers.askToAddUserId", "TgUserID=="+strconv.FormatInt(tgUserID, 10)))
@@ -2761,10 +2769,10 @@ func (t *Tgbot) sendClientSubLinks(chatId int64, email string) {
 		}
 		inlineKeyboard := tu.InlineKeyboard(
 			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(t.I18nBot("subscription.individualLinks")).WithCallbackData(t.encodeQuery("client_individual_links "+cleanEmail)),
+				tu.InlineKeyboardButton(t.I18nBot("subscription.individualLinks")).WithCallbackData(t.encodeQuery("client_individual_links all_"+cleanEmail)),
 			),
 			tu.InlineKeyboardRow(
-				tu.InlineKeyboardButton(t.I18nBot("qrCode")).WithCallbackData(t.encodeQuery("client_qr_links "+cleanEmail)),
+				tu.InlineKeyboardButton(t.I18nBot("qrCode")).WithCallbackData(t.encodeQuery("client_qr_links sub_"+cleanEmail)),
 			),
 		)
 		t.SendMsgToTgbot(chatId, msg, inlineKeyboard)
@@ -2783,7 +2791,8 @@ func (t *Tgbot) sendClientSubLinks(chatId int64, email string) {
 
 // sendClientIndividualLinks fetches the subscription content (individual links) and sends it to the user
 func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
-	cleanEmail, isAwgRequest := cleanAwgEmail(email)
+	isAllExplicit := strings.HasPrefix(email, "all_")
+	cleanEmail, isAwgRequest := cleanAwgEmail(strings.TrimPrefix(email, "all_"))
 
 	if isAwgRequest {
 		if awgClient, err := t.getAwgClientByEmail(cleanEmail); err == nil && awgClient != nil {
@@ -2793,7 +2802,7 @@ func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
 	}
 
 	// First check if it's an Xray client
-	_, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
+	traffic, client, _ := t.inboundService.GetClientByEmail(cleanEmail)
 	if client != nil {
 		subURL, _, err := t.buildSubscriptionURLs(cleanEmail)
 		if err != nil {
@@ -2807,19 +2816,37 @@ func (t *Tgbot) sendClientIndividualLinks(chatId int64, email string) {
 			return
 		}
 
-		const maxPerMessage = 50
-		for i := 0; i < len(cleaned); i += maxPerMessage {
-			j := i + maxPerMessage
-			if j > len(cleaned) {
-				j = len(cleaned)
+		var matchedLinks []string
+		var inbound *model.Inbound
+		if !isAllExplicit && traffic != nil && traffic.InboundId > 0 {
+			inbound, _ = t.inboundService.GetInbound(traffic.InboundId)
+			if inbound != nil {
+				inboundRemarkLower := strings.ToLower(inbound.Remark)
+				portStr := fmt.Sprintf(":%d", inbound.Port)
+				for _, link := range cleaned {
+					unescaped, _ := url.PathUnescape(link)
+					unescapedLower := strings.ToLower(unescaped)
+					if (inbound.Remark != "" && strings.Contains(unescapedLower, inboundRemarkLower)) || strings.Contains(link, portStr) {
+						matchedLinks = append(matchedLinks, link)
+					}
+				}
 			}
-			chunk := cleaned[i:j]
-			msg := t.I18nBot("subscription.individualLinks") + ":\r\n"
-			for _, link := range chunk {
-				msg += "<code>" + link + "</code>\r\n"
-			}
-			t.SendMsgToTgbot(chatId, msg)
 		}
+
+		if len(matchedLinks) == 0 {
+			matchedLinks = cleaned
+		}
+
+		header := t.I18nBot("subscription.individualLinks")
+		if !isAllExplicit && inbound != nil && inbound.Remark != "" {
+			header = fmt.Sprintf("🌐 %s (%s)", inbound.Remark, strings.ToUpper(string(inbound.Protocol)))
+		}
+
+		msg := header + ":\r\n"
+		for _, link := range matchedLinks {
+			msg += "<code>" + link + "</code>\r\n"
+		}
+		t.SendMsgToTgbot(chatId, msg)
 		return
 	}
 
