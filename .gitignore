@@ -21,6 +21,8 @@ dist/
 release/
 target/
 node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
 
 # Ignore compiled binaries
 /3ax-ui
