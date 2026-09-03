@@ -13,73 +13,83 @@ description: Глобальная архитектура 3AX-UI, C4-модель
 
 ## 1. Архитектурная модель C4 (Container Diagram)
 
-## 1. Архитектурная модель C4
-
-Для наглядного представления архитектура разделена на два уровня: **Контекст системы** (взаимодействие с внешними клиентами) и **Контейнеры хоста** (взаимодействие внутренних демонов и ядра).
-
-### 1.1. Уровень 1: Контекст системы (System Context)
-
-Определяет внешних акторов и их точки взаимодействия с платформой 3AX-UI:
+Ниже представлена полная системная диаграмма взаимодействия всех процессов, сетевых движков, модулей ядра Linux и внешних клиентов:
 
 ```mermaid
-flowchart TD
-    Admin["👨‍💻 Администратор"] -->|Web UI / REST API :2053| Platform["🛡️ Серверный комплекс 3AX-UI"]
-    TgUser["📱 Пользователь Telegram"] -->|Команды /start, заявка на доступ| Platform
-    VpnClient["💻 VPN / Proxy Клиенты<br/>(AmneziaVPN, V2RayN, Sing-box, Clash)"] -->|Подписка / Конфиги| Platform
-    
-    Platform -->|Telegram Bot API| TgCloud["☁️ Telegram Cloud"]
-    Platform -->|Маршрутизация трафика| Internet["🌐 Интернет / Проксируемые ресурсы"]
-    
-    VpnClient ==>|Обфусцированный трафик AWG / WG| Platform
-    VpnClient ==>|Xray трафик VLESS / Trojan / SS| Platform
-    VpnClient ==>|MTProto FakeTLS трафик| Platform
-```
-
----
-
-### 1.2. Уровень 2: Контейнеры и процессы хоста (Container Diagram)
-
-Показывает внутреннее устройство хоста Linux: разделение на сетевые демоны, сервисный слой Golang, базу данных и пространство ядра (Kernel Space):
-
-```mermaid
-flowchart TD
-    subgraph UI_Layer ["1. Уровень взаимодействия (Entrypoints)"]
-        Web["Gin Web-сервер<br/>REST API, Web UI, WebSocket"]
-        Sub["Sub Server<br/>Dual-Stack подписки"]
-        Bot["Telegram Bot Демон<br/>Онбординг, админ-пульт"]
+flowchart TB
+    subgraph Clients["Клиенты и внешние потребители"]
+        Browser["Веб-браузер (Администратор)"]
+        TgUser["Пользователь Telegram"]
+        SubClient["VPN / Proxy Клиенты<br/>(AmneziaVPN, V2RayN, Sing-box, Clash, Mihomo)"]
     end
 
-    subgraph Core_Layer ["2. Сервисный слой и хранилище данных"]
-        Services["Бизнес-сервисы (web/service/*)<br/>Inbound, Tunnel, Mtproto, User, Setting"]
-        DB[("SQLite 3 DB<br/>/etc/x-ui/3ax-ui.db")]
-        Shared["Shared-примитивы (shared/*)<br/>IPAM пулы, PortFwd, KeyGen"]
+    subgraph Host["Хост-система (Linux)"]
+        subgraph Daemon["Процесс 3AX-UI (Golang)"]
+            Main["Точка входа main.go<br/>Рантайм, обработка сигналов (SIGHUP, SIGUSR1, SIGTERM)"]
+            WebServer["Gin Web-сервер<br/>REST API /panel/api/*, Web UI, WebSocket"]
+            SubServer["Sub Server<br/>Dual-stack IPv4/IPv6, Base64, JSON, YAML"]
+            TgBot["Telegram Bot Демон (telego)<br/>Онбординг, админ-пульт, валидация кириллицы"]
+            CronManager["Планировщик фоновых задач (web/job/*)<br/>Опрос трафика 10с, лимиты IP, алерт CPU, ротация логов"]
+            
+            subgraph Services["Сервисный слой (web/service/*)"]
+                InboundSvc["InboundService"]
+                TunnelSvc["TunnelService"]
+                MtprotoSvc["MtprotoService"]
+                RegSvc["RegistrationService"]
+                XraySvc["XraySettingService"]
+                UserSvc["UserService"]
+                SettingSvc["SettingService"]
+            end
+            
+            subgraph SharedCore["Shared-примитивы (shared/*)"]
+                IPAM["IPAM (Менеджер пулов IPv4/IPv6)"]
+                PortFwd["Port Forwarding (Управление iptables)"]
+                KeyGen["KeyGen (Генерация ключей Curve25519)"]
+            end
+        end
+
+        subgraph Storage["Слой хранения данных"]
+            SQLite[("База данных SQLite 3<br/>/etc/x-ui/3ax-ui.db (GORM)")]
+        end
+
+        subgraph ProtocolEngines["Сетевые движки и процессы (User Space)"]
+            XrayCore["Xray-Core Daemon<br/>(VLESS, VMess, Trojan, Shadowsocks)"]
+            MTG["MTG Sidecar Daemon<br/>(MTProto Proxy FakeTLS)"]
+            NDPPD["ndppd Daemon<br/>(NDP Proxy Native IPv6)"]
+        end
+
+        subgraph Kernel["Пространство ядра Linux (Kernel Space)"]
+            AWGKernel["Модуль ядра AmneziaWG (DKMS)<br/>(awg0: обфускация Jc/Jmin/Jmax/S1-S4/H1-H4/I1-I5)"]
+            WGKernel["Модуль ядра Native WireGuard<br/>(wg0)"]
+            Netfilter["Подсистема Netfilter / iptables<br/>(Цепочки DNAT, SNAT, FORWARD)"]
+        end
     end
 
-    subgraph Engines ["3. Сетевые движки и сайдкары (User Space)"]
-        Xray["Xray-Core Daemon<br/>VLESS, VMess, Trojan, SS"]
-        MTG["MTG-Multi Sidecar<br/>MTProto Proxy FakeTLS"]
-        NDP["ndppd Daemon<br/>NDP Proxy Native IPv6"]
-    end
+    Browser -->|HTTPS / WSS :2053| WebServer
+    TgUser -->|Telegram Bot API (Long Polling)| TgBot
+    SubClient -->|HTTP / HTTPS :2096| SubServer
+    SubClient -->|Обфусцированный UDP трафик| AWGKernel
+    SubClient -->|Стандартный UDP трафик| WGKernel
+    SubClient -->|Прокси TCP/UDP трафик| XrayCore
+    SubClient -->|Telegram TCP трафик| MTG
 
-    subgraph Kernel ["4. Пространство ядра (Kernel Space)"]
-        AWG["Модуль ядра AmneziaWG<br/>awg0 (обфускация 1.x–3.1)"]
-        WG["Модуль Native WireGuard<br/>wg0"]
-        IPT["Netfilter / iptables<br/>DNAT / FORWARD правила"]
-    end
+    Main --> WebServer
+    Main --> SubServer
+    WebServer --> Services
+    TgBot --> Services
+    CronManager --> Services
 
-    Web --> Services
-    Sub --> Services
-    Bot --> Services
+    Services <--> SQLite
+    Services --> IPAM
+    Services --> PortFwd
+    Services --> KeyGen
 
-    Services <--> DB
-    Services --> Shared
-
-    Services -->|gRPC :62789| Xray
-    Services -->|fork/exec / signals| MTG
-    Services -->|конфиг ndppd.conf| NDP
-    Services -->|awg syncconf| AWG
-    Services -->|wg syncconf| WG
-    Shared -->|iptables DNAT 3ax-fwd-*| IPT
+    Services -->|gRPC Stats & API :62789| XrayCore
+    Services -->|IPC запуск и контроль сигналов| MTG
+    Services -->|awg syncconf / netlink ip link| AWGKernel
+    Services -->|wg syncconf / netlink ip link| WGKernel
+    Services -->|Генерация конфигурации ndppd.conf| NDPPD
+    PortFwd -->|Формирование правил 3ax-fwd-*| Netfilter
 ```
 
 ---
