@@ -66,7 +66,7 @@ flowchart TB
     end
 
     Browser -->|HTTPS / WSS :2053| WebServer
-    TgUser -->|Telegram Bot API (Long Polling)| TgBot
+    TgUser -->|Telegram Bot API - Long Polling| TgBot
     SubClient -->|HTTP / HTTPS :2096| SubServer
     SubClient -->|Обфусцированный UDP трафик| AWGKernel
     SubClient -->|Стандартный UDP трафик| WGKernel
