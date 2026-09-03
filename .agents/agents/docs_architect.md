@@ -24,8 +24,6 @@ permissions:
       allow:
         - "docs/**"
         - ".agents/CODE_COVERAGE_CHECKLIST.md"
-        - "package.json"
-        - "package-lock.json"
       deny:
         - "**/*.go"
         - "**/*.sh"
@@ -43,6 +41,7 @@ permissions:
         - "Dockerfile"
   commands:
     allow:
+      - "npm --prefix docs run docs:*"
       - "npm run docs:*"
       - "git status*"
       - "git diff*"
@@ -235,7 +234,7 @@ docs/
 
 После написания и валидации каждого логического модуля документации:
 1. **Валидация сборки:**
-   - Обязательно выполнить `npm run docs:build` и убедиться в отсутствии ошибок рендеринга и сломанных ссылок.
+   - Обязательно выполнить `npm --prefix docs run docs:build` (или `npm run docs:build` из каталога `docs/`) и убедиться в отсутствии ошибок рендеринга и сломанных ссылок.
 2. **Точечный staging (никакого слепого `git add .`):**
    - Добавлять только файлы написанной документации и обновленный чек-лист:
      ```bash
