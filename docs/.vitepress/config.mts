@@ -10,6 +10,19 @@ export default withMermaid(
   cleanUrls: true,
   ignoreDeadLinks: true,
 
+  vite: {
+    optimizeDeps: {
+      include: [
+        'mermaid',
+        'fastdom',
+        '@braintree/sanitize-url',
+        'dayjs',
+        'debug',
+        'cytoscape'
+      ]
+    }
+  },
+
   themeConfig: {
     logo: '/media/3ax-ui-dark.png',
     siteTitle: '3AX-UI Docs',
