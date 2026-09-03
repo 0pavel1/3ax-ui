@@ -11,7 +11,7 @@ hero:
   actions:
     - theme: brand
       text: Архитектура проекта
-      link: /architecture/overview
+      link: /guide/architecture-overview
     - theme: alt
       text: Чек-лист покрытия (100%)
       link: /coverage
