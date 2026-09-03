@@ -11,12 +11,12 @@
 
 | Уровень архитектуры | Назначение | Всего файлов | Покрыто | Процент |
 | :--- | :--- | :---: | :---: | :---: |
-| **Level 0: Bootstrap & Runtime** | Точка входа `main.go`, конфигурация, логгер, системные утилиты, bash-скрипты | 18 | 0 | 0.0% |
+| **Level 0: Bootstrap & Runtime** | Точка входа `main.go`, конфигурация, логгер, системные утилиты, bash-скрипты | 18 | 18 | 100.0% |
 | **Level 1: Storage, Models & Shared** | SQLite, GORM модели, IPAM, portfwd, ndppd, генерация ключей | 22 | 0 | 0.0% |
 | **Level 2: Core Protocol Engines** | AmneziaWG (1.x–3.1), Native WireGuard, Xray-core gRPC, MTProto, подписки | 33 | 0 | 0.0% |
 | **Level 3: Business Services & Jobs** | Сервисный слой панели, cron планировщик, периодический опрос трафика | 46 | 0 | 0.0% |
 | **Level 4: Presentation & Consumers** | REST API `/panel/api/*`, сессии, Telegram-бот онбординга, веб-интерфейс | 23 | 0 | 0.0% |
-| **ИТОГО ПО ПРОЕКТУ** | **Полная кодовая база 3AX-UI** | **142** | **0** | **0.0%** |
+| **ИТОГО ПО ПРОЕКТУ** | **Полная кодовая база 3AX-UI** | **142** | **18** | **12.7%** |
 
 ---
 
@@ -24,25 +24,25 @@
 
 ::: info Level 0: Bootstrap & Runtime
 Включает инициализацию демонов, обработку системных сигналов ОС (`SIGHUP`, `SIGUSR1`, `SIGTERM`), парсинг CLI-флагов и скрипты установки/обновления.  
-👉 [Перейти к описанию Level 0](/architecture/level0-runtime)
+👉 [Перейти к описанию Level 0 (Точка входа main.go)](/core/main)
 :::
 
 ::: info Level 1: Хранилище и Shared-примитивы
 Описывает структуру базы данных SQLite, GORM-сущности и базовые системные примитивы: выделение IP-пулов (IPAM), правила iptables (Port Forwarding), генерацию ключей Curve25519 и NDP proxy.  
-👉 [Перейти к описанию Level 1](/architecture/level1-storage-models)
+👉 [Перейти к описанию Level 1 (База данных)](/database/core)
 :::
 
 ::: info Level 2: Движки протоколов
 Разбор низкоуровневых протоколов: AmneziaWG всех поколений (1.x, 2.0, 3.0, 3.1), Xray-core (VLESS, Trojan, VMess, Shadowsocks, gRPC stats), MTProto (сайдкар `mtg-multi`) и сервер подписок.  
-👉 [Перейти к описанию AmneziaWG](/protocols/amneziawg)
+👉 [Перейти к описанию AmneziaWG обфускации](/protocols/tunnel/amnezia-obfuscation)
 :::
 
 ::: info Level 3: Сервисы и фоновые задачи
 Бизнес-логика панели: учет квот и трафика, управление клиентами, транслитерация кириллических имен, сторожевые таймеры процессов и фоновые cron-задачи.  
-👉 [Перейти к описанию Сервисов](/services/business-logic)
+👉 [Перейти к описанию Inbound Service](/services/inbound-service)
 :::
 
 ::: info Level 4: Презентационный уровень
 Потребительский уровень: Telegram-бот с интерактивным онбордингом по ФИО, REST API для внешних интеграций и Vue-компоненты панели.  
-👉 [Перейти к описанию Telegram-бота](/presentation/telegram-bot)
+👉 [Перейти к описанию Telegram-бота](/bot/architecture)
 :::

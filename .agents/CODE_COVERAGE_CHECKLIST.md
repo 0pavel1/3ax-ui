@@ -11,59 +11,59 @@
 
 | Уровень архитектуры | Каталог документации | Всего файлов | Покрыто | Процент |
 | :--- | :--- | :---: | :---: | :---: |
-| **Level 0: Bootstrap & Runtime** | `docs/core/`, `docs/deployment/` | 18 | 0 | 0.0% |
+| **Level 0: Bootstrap & Runtime** | `docs/core/`, `docs/deployment/` | 18 | 18 | 100.0% |
 | **Level 1: Storage, Models & Shared** | `docs/database/`, `docs/shared/` | 22 | 0 | 0.0% |
 | **Level 2: Core Protocol Engines** | `docs/protocols/` (xray, tunnel, mtproto, sub) | 33 | 0 | 0.0% |
 | **Level 3: Business Services & Jobs** | `docs/services/`, `docs/jobs/` | 46 | 0 | 0.0% |
 | **Level 4: Presentation, API & Bot** | `docs/bot/`, `docs/api/`, `docs/ui/` | 23 | 0 | 0.0% |
-| **ИТОГО ПО КОДОВОЙ БАЗЕ** | | **142** | **0** | **0.0%** |
+| **ИТОГО ПО КОДОВОЙ БАЗЕ** | | **142** | **18** | **12.7%** |
 
 ---
 
 ## Level 0: Входная точка, рантайм, утилиты и скрипты развертывания
 
 ### Ядро рантайма (`docs/core/`)
-- [ ] [`main.go`](main.go) ➔ `docs/core/main.md`  
+- [x] [`main.go`](main.go) ➔ [`docs/core/main.md`](../docs/core/main.md)  
   *Точка входа, CLI-сабкоманды (`run`, `migrate`, `awg-gen2`, `setting`, `cert`), перехват сигналов ОС (`syscall.SIGHUP`, `syscall.SIGTERM`, `sys.SIGUSR1`), жизненный цикл серверов.*
-- [ ] [`config/config.go`](config/config.go) ➔ `docs/core/config.md`  
+- [x] [`config/config.go`](config/config.go) ➔ [`docs/core/config.md`](../docs/core/config.md)  
   *Чтение версий из ldflags/файла, пути к базе данных SQLite, рабочие порты, флаги отладки.*
-- [ ] [`logger/logger.go`](logger/logger.go) ➔ `docs/core/logger.md`  
+- [x] [`logger/logger.go`](logger/logger.go) ➔ [`docs/core/logger.md`](../docs/core/logger.md)  
   *Подсистема логирования на базе `op/go-logging`, уровни логов, кастомные форматтеры, вывод в stdout и файл.*
-- [ ] [`logger/logger_test.go`](logger/logger_test.go) ➔ `docs/core/logger.md`  
+- [x] [`logger/logger_test.go`](logger/logger_test.go) ➔ [`docs/core/logger.md`](../docs/core/logger.md)  
   *Юнит-тесты подсистемы логирования.*
 
 ### Вспомогательные утилиты (`docs/core/utils/`)
-- [ ] [`util/common/err.go`](util/common/err.go) ➔ `docs/core/utils/helpers.md`  
+- [x] [`util/common/err.go`](util/common/err.go) ➔ [`docs/core/utils/helpers.md`](../docs/core/utils/helpers.md)  
   *Обертки над системными ошибками и интерфейс обработки сбоев.*
-- [ ] [`util/common/format.go`](util/common/format.go) ➔ `docs/core/utils/helpers.md`  
+- [x] [`util/common/format.go`](util/common/format.go) ➔ [`docs/core/utils/helpers.md`](../docs/core/utils/helpers.md)  
   *Форматирование байтов трафика (KB/MB/GB), времени и строковых системных констант.*
-- [ ] [`util/common/multi_error.go`](util/common/multi_error.go) ➔ `docs/core/utils/helpers.md`  
+- [x] [`util/common/multi_error.go`](util/common/multi_error.go) ➔ [`docs/core/utils/helpers.md`](../docs/core/utils/helpers.md)  
   *Структура агрегации множественных ошибок для пакетных операций.*
-- [ ] [`util/crypto/crypto.go`](util/crypto/crypto.go) ➔ `docs/core/utils/crypto.md`  
+- [x] [`util/crypto/crypto.go`](util/crypto/crypto.go) ➔ [`docs/core/utils/crypto.md`](../docs/core/utils/crypto.md)  
   *Хэширование паролей через `bcrypt`, верификация хэшей, криптографические операции.*
-- [ ] [`util/json_util/json.go`](util/json_util/json.go) ➔ `docs/core/utils/helpers.md`  
+- [x] [`util/json_util/json.go`](util/json_util/json.go) ➔ [`docs/core/utils/helpers.md`](../docs/core/utils/helpers.md)  
   *Сериализация/десериализация JSON через оптимизированный движок `goccy/go-json`.*
-- [ ] [`util/ldap/ldap.go`](util/ldap/ldap.go) ➔ `docs/core/utils/ldap.md`  
+- [x] [`util/ldap/ldap.go`](util/ldap/ldap.go) ➔ [`docs/core/utils/ldap.md`](../docs/core/utils/ldap.md)  
   *Клиент подключения к LDAP-каталогу, аутентификация и поиск учетных записей.*
-- [ ] [`util/random/random.go`](util/random/random.go) ➔ `docs/core/utils/crypto.md`  
+- [x] [`util/random/random.go`](util/random/random.go) ➔ [`docs/core/utils/crypto.md`](../docs/core/utils/crypto.md)  
   *Генерация криптографически стойких случайных строк, токенов сессий и паролей.*
-- [ ] [`util/reflect_util/reflect.go`](util/reflect_util/reflect.go) ➔ `docs/core/utils/helpers.md`  
+- [x] [`util/reflect_util/reflect.go`](util/reflect_util/reflect.go) ➔ [`docs/core/utils/helpers.md`](../docs/core/utils/helpers.md)  
   *Утилиты динамической рефлексии полей структур.*
-- [ ] [`util/sys/psutil.go`](util/sys/psutil.go) ➔ `docs/core/utils/sys.md`  
+- [x] [`util/sys/psutil.go`](util/sys/psutil.go) ➔ [`docs/core/utils/sys.md`](../docs/core/utils/sys.md)  
   *Сбор системных метрик CPU, RAM, дискового пространства и сети через библиотеку `gopsutil`.*
-- [ ] [`util/sys/sys_linux.go`](util/sys/sys_linux.go) ➔ `docs/core/utils/sys.md`  
+- [x] [`util/sys/sys_linux.go`](util/sys/sys_linux.go) ➔ [`docs/core/utils/sys.md`](../docs/core/utils/sys.md)  
   *Linux-специфичные системные вызовы, сигналы управления (`sys.SIGUSR1`).*
-- [ ] [`util/sys/sys_windows.go`](util/sys/sys_windows.go) ➔ `docs/core/utils/sys.md`  
+- [x] [`util/sys/sys_windows.go`](util/sys/sys_windows.go) ➔ [`docs/core/utils/sys.md`](../docs/core/utils/sys.md)  
   *Windows-специфичные системные вызовы и полифиллы сигналов.*
-- [ ] [`util/sys/sys_darwin.go`](util/sys/sys_darwin.go) ➔ `docs/core/utils/sys.md`  
+- [x] [`util/sys/sys_darwin.go`](util/sys/sys_darwin.go) ➔ [`docs/core/utils/sys.md`](../docs/core/utils/sys.md)  
   *macOS-специфичные системные вызовы.*
 
 ### Скрипты развертывания и CLI (`docs/deployment/`)
-- [ ] [`install.sh`](install.sh) ➔ `docs/deployment/install-script.md`  
+- [x] [`install.sh`](install.sh) ➔ [`docs/deployment/install-script.md`](../docs/deployment/install-script.md)  
   *Главный инсталлятор: детекция ОС, PPA amnezia, установка DKMS модуля, сборка из локального git-клона.*
-- [ ] [`update.sh`](update.sh) ➔ `docs/deployment/update-script.md`  
+- [x] [`update.sh`](update.sh) ➔ [`docs/deployment/update-script.md`](../docs/deployment/update-script.md)  
   *Скрипт обновления: сохранение базы данных, детекция debug-режима, обновление бинарников.*
-- [ ] [`x-ui.sh`](x-ui.sh) ➔ `docs/deployment/cli-utility.md`  
+- [x] [`x-ui.sh`](x-ui.sh) ➔ [`docs/deployment/cli-utility.md`](../docs/deployment/cli-utility.md)  
   *Интерактивное консольное меню управления: смена портов, сброс паролей, статус systemd-службы.*
 
 ---
