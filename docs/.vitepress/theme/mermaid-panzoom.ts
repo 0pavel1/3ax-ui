@@ -43,12 +43,16 @@ export function initMermaidPanZoom() {
     container.appendChild(toolbar)
     container.appendChild(hint)
 
-    // Setup panzoom on the svg
+    // Remove mermaid inline constraints so panzoom has full unbounded canvas
+    svg.style.maxWidth = 'none'
+    svg.style.maxHeight = 'none'
+    svg.style.overflow = 'visible'
+
+    // Setup panzoom on the svg (unbounded canvas without contain clipping)
     const panzoom = Panzoom(svg, {
-      maxScale: 6,
-      minScale: 0.2,
-      canvas: true,
-      contain: 'outside'
+      maxScale: 8,
+      minScale: 0.15,
+      canvas: true
     })
 
     viewport.addEventListener('wheel', (event: WheelEvent) => {

@@ -19,25 +19,36 @@
 
 .mermaid-miro-viewport {
   width: 100%;
-  min-height: 280px;
-  max-height: 600px;
+  height: 480px;
   overflow: hidden;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: grab;
   user-select: none;
-  padding: 16px;
+  padding: 0;
 }
 
 .mermaid-miro-viewport:active {
   cursor: grabbing;
 }
 
+.mermaid-miro-viewport .mermaid {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible !important;
+}
+
 .mermaid-miro-viewport svg {
   display: block;
   max-width: none !important;
-  height: auto;
+  max-height: none !important;
+  overflow: visible !important;
+  pointer-events: all;
   transform-origin: center center;
   transition: transform 0.05s ease-out;
 }
