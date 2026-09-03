@@ -1,6 +1,8 @@
 import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
-export default defineConfig({
+export default withMermaid(
+  defineConfig({
   title: "3AX-UI",
   description: "Исчерпывающая техническая документация и архитектурный справочник 3AX-UI",
   lang: 'ru-RU',
@@ -225,4 +227,4 @@ export default defineConfig({
       copyright: 'Copyright © 2026 3AX-UI Contributors'
     }
   }
-})
+}))
