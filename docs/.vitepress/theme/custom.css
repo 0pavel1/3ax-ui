@@ -1,0 +1,170 @@
+/* Mermaid Miro-Style Interactive Container */
+.mermaid-miro-container {
+  position: relative;
+  margin: 24px 0;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  background-color: var(--vp-c-bg-soft);
+  background-image: radial-gradient(var(--vp-c-divider) 1px, transparent 1px);
+  background-size: 20px 20px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.mermaid-miro-container:hover {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.1);
+}
+
+.mermaid-miro-viewport {
+  width: 100%;
+  min-height: 280px;
+  max-height: 600px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  user-select: none;
+  padding: 16px;
+}
+
+.mermaid-miro-viewport:active {
+  cursor: grabbing;
+}
+
+.mermaid-miro-viewport svg {
+  display: block;
+  max-width: none !important;
+  height: auto;
+  transform-origin: center center;
+  transition: transform 0.05s ease-out;
+}
+
+/* Floating Toolbar (Miro Style) */
+.mermaid-miro-toolbar {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--vp-c-bg-elv);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 10;
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+.mermaid-miro-container:hover .mermaid-miro-toolbar {
+  opacity: 1;
+}
+
+.mermaid-miro-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: var(--vp-c-text-1);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.mermaid-miro-btn:hover {
+  background-color: var(--vp-c-default-soft);
+  color: var(--vp-c-brand-1);
+}
+
+/* Miro hint pill */
+.mermaid-miro-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 14px;
+  font-size: 11px;
+  color: var(--vp-c-text-3);
+  background: var(--vp-c-bg-elv);
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid var(--vp-c-divider);
+  pointer-events: none;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.mermaid-miro-container:hover .mermaid-miro-hint {
+  opacity: 1;
+}
+
+/* Fullscreen Miro Modal */
+.mermaid-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: modalFadeIn 0.2s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mermaid-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: rgba(20, 20, 20, 0.8);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.mermaid-modal-header .title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ddd;
+}
+
+.mermaid-modal-header .controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mermaid-modal-viewport {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.mermaid-modal-viewport:active {
+  cursor: grabbing;
+}
+
+.mermaid-modal-viewport svg {
+  max-width: none !important;
+  max-height: none !important;
+  width: auto;
+  height: auto;
+}
