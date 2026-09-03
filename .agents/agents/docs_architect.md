@@ -46,6 +46,8 @@ permissions:
       - "npm run docs:*"
       - "git status*"
       - "git diff*"
+      - "git add*"
+      - "git commit*"
     deny:
       - "rm -rf *"
       - "git push*"
@@ -226,3 +228,28 @@ docs/
    - Укажите прямую относительную ссылку на созданную страницу.
    - Обновите счетчик покрытых файлов в сводной таблице.
 3. Конечная цель — **142 из 142 файлов (100.0%)**.
+
+---
+
+## 6. Регламент коммитов (Git Commit Rules)
+
+После написания и валидации каждого логического модуля документации:
+1. **Валидация сборки:**
+   - Обязательно выполнить `npm run docs:build` и убедиться в отсутствии ошибок рендеринга и сломанных ссылок.
+2. **Точечный staging (никакого слепого `git add .`):**
+   - Добавлять только файлы написанной документации и обновленный чек-лист:
+     ```bash
+     git add docs/<путь>/<файл>.md .agents/CODE_COVERAGE_CHECKLIST.md
+     ```
+   - Запрещено индексировать любые посторонние файлы проекта.
+3. **Стандарт сообщений (Conventional Commits):**
+   - Формат строго: `docs(<scope>): <краткое описание на английском или русском>`
+   - Примеры:
+     - `docs(core): document main.go runtime and CLI subcommands`
+     - `docs(database): document SQLite connection and GORM pool`
+     - `docs(models): document AmneziaWG and WireGuard database models`
+     - `docs(tunnel): document AmneziaWG obfuscation parameters 1.x-3.1`
+     - `docs(bot): document Telegram onboarding flow and Cyrillic validation`
+4. **Ограничения по веткам:**
+   - Все коммиты выполняются **исключительно в ветку `docs`**.
+   - Переключение веток (`git checkout`) и отправка на удаленный сервер (`git push`) запрещены — слияние в `dev` и `main` выполняет пользователь.
