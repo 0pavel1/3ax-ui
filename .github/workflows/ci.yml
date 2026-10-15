@@ -1,20 +1,38 @@
 name: CI
 
 on:
-    push:
-        branches:
-            - dev
-        tags-ignore:
-            - "v*"
-    pull_request:
-        branches:
-            - dev
+  push:
+    branches: [dev, sync, main]
+    tags-ignore:
+      - "v*"
+    paths-ignore: ['**/*.md', 'docs/**', 'LICENSE*']
+  pull_request:
+    branches: [dev, sync, main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore: ['**/*.md', 'docs/**', 'LICENSE*']
+  workflow_dispatch:
+    inputs:
+      full:
+        description: 'Run the full validation before a release or merge'
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: true
 
 permissions:
     contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
     check:
+        timeout-minutes: 30
+        if: github.event_name != 'pull_request' || !github.event.pull_request.draft
         name: Build, vet, lint and test
         runs-on: ubuntu-latest
         steps:
@@ -28,9 +46,11 @@ jobs:
                   cache: true
 
             - name: Build
+              if: (github.event_name == 'pull_request' && !github.event.pull_request.draft) || inputs.full
               run: go build ./...
 
             - name: Vet
+              if: (github.event_name == 'pull_request' && !github.event.pull_request.draft) || inputs.full
               run: go vet ./...
 
             - name: Check formatting
@@ -43,11 +63,13 @@ jobs:
                   fi
 
             - name: Staticcheck
+              if: (github.event_name == 'pull_request' && !github.event.pull_request.draft) || inputs.full
               run: |
                   go install honnef.co/go/tools/cmd/staticcheck@latest
                   staticcheck ./...
 
             - name: Unreachable code
+              if: (github.event_name == 'pull_request' && !github.event.pull_request.draft) || inputs.full
               run: |
                   go install golang.org/x/tools/cmd/deadcode@latest
                   output=$(deadcode -test ./...)
@@ -60,4 +82,5 @@ jobs:
             # The panel is heavily concurrent (cron jobs, WebSocket hub, xray
             # process management), so the race detector is the point of this job.
             - name: Test with the race detector
+              if: (github.event_name == 'pull_request' && !github.event.pull_request.draft) || inputs.full
               run: go test -race -count=1 ./...
