@@ -689,6 +689,10 @@
 "language" = "Dil"
 "telegramBotLanguage" = "Telegram Bot Dili"
 
+"telegramBotExcludeInbounds" = "Excluded Inbounds for Bot"
+"telegramBotExcludeInboundsDesc" = "Select inbounds that will be excluded when registering new bot users"
+"telegramBotExcludeInboundsPlaceholder" = "Select inbounds to exclude"
+
 [pages.xray]
 "title" = "Xray Yapılandırmaları"
 "save" = "Kaydet"
@@ -1143,6 +1147,9 @@
 "FinishProcess" = "🔚 Tüm müşteriler için trafik sıfırlama işlemi tamamlandı."
 "awgConfigUpdated" = "🔄 Sunucunun AmneziaWG karartması güncellendi. Aşağıdaki yeni yapılandırmayı içe alın — eski yapılandırmanız artık bağlanmayacak.\r\n"
 
+"awgNoSubNotice" = "ℹ️ AmneziaWG connects via configuration file (.conf) or QR code below:"
+"instructionText" = "📱 <b>How to connect to VPN:</b>\n\nThere are two main ways to connect:\n\n1️⃣ <b>Universal Method (VLESS, Hysteria, Trojan, VMess, Shadowsocks):</b>\n• Download any client app: <b>Happ</b>, <b>v2rayTun</b>, <b>Streisand</b> (iOS / Android / Windows / macOS) or <b>v2rayNG</b> (Android).\n• In the bot menu click <b>«Subscription»</b> and copy your personal link.\n• Paste this link into the app as a «Subscription» — all available servers will load and update automatically!\n\n2️⃣ <b>AmneziaVPN (AmneziaWG):</b>\n• Download the official <b>AmneziaVPN</b> app (iOS / Android / Windows / macOS).\n• In the bot menu click <b>«Individual Links»</b> or <b>«QR Code»</b> and select the connection marked with <b>awg</b>.\n• The bot will send you a ready <code>.conf</code> file and QR code.\n• In AmneziaVPN choose: <i>Add server → Setup manually / Config file (or scan QR)</i>.\n\n💡 <i>You can always view your links, download configs, and check traffic usage using the menu buttons below.</i>"
+
 [tgbot.buttons]
 "closeKeyboard" = "❌ Klavyeyi Kapat"
 "cancel" = "❌ İptal"
@@ -1187,6 +1194,12 @@
 "ResetAllTraffics" = "Tüm Trafikleri Sıfırla"
 "SortedTrafficUsageReport" = "Sıralı Trafik Kullanım Raporu"
 
+"instruction" = "📖 Instructions"
+"approveReg" = "✅ Approve"
+"rejectReg" = "❌ Reject"
+"pendingRegistrations" = "📋 Applications"
+"noPendingRegistrations" = "📋 No pending applications"
+
 [tgbot.answers]
 "successfulOperation" = "✅ İşlem başarılı!"
 "errorOperation" = "❗ İşlemde hata."
@@ -1214,3 +1227,19 @@
 "wireguard" = "Wireguard (Xray NAT66)"
 "amneziawg" = "AmneziaWG (Yerel IPv6)"
 "nativewg" = "Wireguard (Yerel IPv6)"
+
+[tgbot.registration]
+"askFirstname" = "👋 Hello! To connect to VPN please enter your <b>First Name</b> in Russian (Cyrillic):"
+"askLastname" = "Great! Now enter your <b>Last Name</b> in Russian (Cyrillic):"
+"onlyCyrillicFirstname" = "⚠️ Please enter only first name in Russian (Cyrillic letters only, no spaces or numbers):"
+"onlyCyrillicLastname" = "⚠️ Please enter only last name in Russian (Cyrillic letters only, no spaces or numbers):"
+"submitted" = "⏳ Your request has been submitted to the administrator. You will receive a notification once approved!"
+"alreadyPending" = "⏳ Your request is already pending administrator approval. Please wait."
+"adminNotice" = "🆕 <b>VPN Connection Request</b>\n\n👤 <b>{{ .FirstName }} {{ .LastName }}</b> (<code>{{ .Slug }}</code>)\n🆔 Telegram ID: <code>{{ .TgID }}</code>\n📱 Username: @{{ .Username }}"
+"approvedAdmin" = "✅ User <b>{{ .Slug }}</b> has been registered across all inbounds (created: {{ .Count }})!"
+"rejectedAdmin" = "❌ Request for user <b>{{ .Slug }}</b> has been rejected."
+"userApprovedWelcome" = "🎉 <b>Your VPN access is ready!</b>"
+"userRejectedNotice" = "❌ Your connection request was rejected by administrator."
+"notFound" = "❌ Registration request not found."
+"alreadyHandled" = "ℹ️ This request has already been handled."
+"failed" = "❌ Failed to create client: {{ .Error }}"
