@@ -6,10 +6,10 @@
 
 ## Что это за проект
 
-**3AX-UI** — форк панели управления [3x-ui](https://github.com/mhsanaei/3x-ui), переработанный и переименованный с потдержкой AmneziaWG.  
+**3AX-UI** — форк панели управления [3ax-ui](https://github.com/coinman-dev/3ax-ui) (изначально [3x-ui](https://github.com/mhsanaei/3x-ui)) с поддержкой AmneziaWG, Native WireGuard, MTProto и маскировкой Nginx.  
 Веб-панель для управления прокси-сервером **Xray-core** (vless, vmess, trojan, shadowsocks, wireguard/AWG).
 
-- Репозиторий: `https://github.com/coinman-dev/3ax-ui`
+- Репозиторий: `https://github.com/0pavel1/3ax-ui` (upstream: `https://github.com/coinman-dev/3ax-ui`)
 - Go module: `github.com/coinman-dev/3ax-ui/v2`
 - Язык бэкенда: Go 1.26
 - Фронтенд: Vue 2 + Ant Design Vue (без сборщика, plain JS)
@@ -39,7 +39,9 @@
 │   ├── sub.go               — старт/стоп, роутер, dual-stack IPv4+IPv6
 │   ├── subController.go     — хендлеры /sub/:id и /json/:id
 │   └── subService.go        — генерация ссылок vless/vmess/trojan/ss, PageData
-├── awg/                     — AmneziaWG (форк WireGuard)
+├── tunnel/                  — AmneziaWG и WireGuard Native (конфигурации, syncconf, healing)
+├── nginx/                   — Nginx reverse proxy (443 порт, SNI-роутинг, заглушки, firewall)
+├── shared/                  — системные примитивы (ipam, portfwd, ndppd, tproxy, crypto)
 ├── xray/                    — управление процессом Xray-core
 ├── logger/                  — логирование
 ├── util/                    — утилиты (common, random, ...)
@@ -78,8 +80,7 @@ config.IsBeta()      // → true если содержит "beta", "alpha", "rc"
 ### Файл config/version
 
 Содержит версию для `go run` / локальной разработки.  
-**Обновлять вручную** при начале работы над новой версией.  
-Текущее значение: `1.0.1-beta`
+**Обновлять вручную** при начале работы над новой версией.
 
 ---
 
@@ -91,6 +92,7 @@ config.IsBeta()      // → true если содержит "beta", "alpha", "rc"
 |-------|-----------|
 | `main` | Стабильные релизы. Только merge из `dev` через PR или напрямую когда готово |
 | `dev` | Текущая разработка, beta-версии. Сюда идут все изменения |
+| `sync` | Постоянная ветка для интеграции обновлений из оригинального репозитория (`upstream/main`) |
 
 **Правило:** новые фичи и фиксы — в `dev`. В `main` попадает только то, что прошло тестирование.
 
